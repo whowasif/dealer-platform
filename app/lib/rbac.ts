@@ -55,6 +55,7 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Dashboard", href: "/dashboard" },
       { label: "Users", href: "/users" },
       { label: "Representatives", href: "/representatives" },
+      { label: "Products", href: "/products" },
       { label: "Reports (National)", href: "/reports" },
       { label: "Settings", href: "/settings" },
       { label: "Audit", href: "/audit" },
@@ -65,6 +66,7 @@ export function menuForUser(user: SessionUser): MenuItem[] {
     return [
       { label: "Dashboard", href: "/dashboard" },
       { label: "Representatives", href: "/representatives" },
+      { label: "Products", href: "/products" },
       { label: "Reports (Division)", href: "/reports" },
     ];
   }
@@ -73,6 +75,7 @@ export function menuForUser(user: SessionUser): MenuItem[] {
     return [
       { label: "Dashboard", href: "/dashboard" },
       { label: "Representatives", href: "/representatives" },
+      { label: "Products", href: "/products" },
       { label: "Orders", href: "/orders" },
       { label: "Reports (District)", href: "/reports" },
     ];
@@ -81,6 +84,7 @@ export function menuForUser(user: SessionUser): MenuItem[] {
   // upazila_representative (default / lowest)
   return [
     { label: "My Dashboard", href: "/dashboard" },
+    { label: "My Representative", href: "/representatives/me" },
     { label: "Place Order", href: "/orders/new" },
     { label: "My Customers", href: "/customers" },
     { label: "My Documents", href: "/documents" },
