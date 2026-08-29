@@ -1,0 +1,28 @@
+# ---- Secrets / env ----
+.env
+.env.local
+.env*.local
+*.env
+
+# ---- Node / Next.js (app) ----
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# ---- Logs ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- OS / Editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ---- Misc ----
+*.pem
