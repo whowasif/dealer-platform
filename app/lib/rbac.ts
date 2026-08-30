@@ -56,6 +56,10 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Users", href: "/users" },
       { label: "Representatives", href: "/representatives" },
       { label: "Products", href: "/products" },
+      { label: "Orders", href: "/orders" },
+      { label: "Customers", href: "/customers" },
+      { label: "Projects", href: "/projects" },
+      { label: "Profit Config", href: "/projects/config" },
       { label: "Reports (National)", href: "/reports" },
       { label: "Settings", href: "/settings" },
       { label: "Audit", href: "/audit" },
@@ -67,6 +71,9 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Dashboard", href: "/dashboard" },
       { label: "Representatives", href: "/representatives" },
       { label: "Products", href: "/products" },
+      { label: "Orders", href: "/orders" },
+      { label: "Customers", href: "/customers" },
+      { label: "Projects", href: "/projects" },
       { label: "Reports (Division)", href: "/reports" },
     ];
   }
@@ -77,6 +84,8 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Representatives", href: "/representatives" },
       { label: "Products", href: "/products" },
       { label: "Orders", href: "/orders" },
+      { label: "Customers", href: "/customers" },
+      { label: "Projects", href: "/projects" },
       { label: "Reports (District)", href: "/reports" },
     ];
   }
@@ -85,8 +94,12 @@ export function menuForUser(user: SessionUser): MenuItem[] {
   return [
     { label: "My Dashboard", href: "/dashboard" },
     { label: "My Representative", href: "/representatives/me" },
+    { label: "My Orders", href: "/orders" },
     { label: "Place Order", href: "/orders/new" },
+    { label: "Record Sale", href: "/orders/sale/new" },
     { label: "My Customers", href: "/customers" },
+    { label: "My Projects", href: "/projects" },
+    { label: "New Project", href: "/projects/new" },
     { label: "My Documents", href: "/documents" },
     { label: "My Profile", href: "/profile" },
   ];

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "seed:admin": "node --experimental-strip-types scripts/seed-admin.ts"
+    "seed:admin": "node --experimental-strip-types scripts/seed-admin.ts",
+    "verify:profit": "node --experimental-strip-types scripts/verify-profit.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

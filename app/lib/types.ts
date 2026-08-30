@@ -317,3 +317,275 @@ export interface MovementListItem {
   created_by_name: string;
   created_at: string;
 }
+
+// -----------------------------------------------------------------------------
+// Task 5 — Customers & Orders (warehouse orders + customer sales).
+// Column names mirror the PostgreSQL schema exactly.
+// -----------------------------------------------------------------------------
+
+export type CustomerType = "retail" | "institutional" | "government";
+
+export type OrderType = "warehouse_order" | "customer_sale";
+
+export type OrderStatus =
+  | "pending"
+  | "approved"
+  | "processing"
+  | "shipped"
+  | "delivered"
+  | "cancelled"
+  | "returned";
+
+export interface CustomerRow {
+  id: string;
+  representative_id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  type: CustomerType;
+  organization_name: string | null;
+  upazila_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A customer row for the list, joined with rep + geography names. */
+export interface CustomerListItem {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  type: CustomerType;
+  organization_name: string | null;
+  representative_id: string;
+  representative_name: string;
+  upazila_id: string | null;
+  upazila_name: string | null;
+  created_at: string;
+}
+
+/** Full detail for a single customer, joined with rep + geography. */
+export interface CustomerDetail extends CustomerRow {
+  representative_name: string;
+  rep_user_id: string;
+  rep_division_id: string;
+  rep_district_id: string;
+  upazila_name: string | null;
+}
+
+/** An order row for the list, joined with rep + customer names. */
+export interface OrderListItem {
+  id: string;
+  order_number: string;
+  order_type: OrderType;
+  status: OrderStatus;
+  order_date: string;
+  expected_delivery: string | null;
+  total_amount: string;
+  discount_amount: string;
+  net_amount: string;
+  representative_id: string;
+  representative_name: string;
+  rep_user_id: string;
+  customer_id: string | null;
+  customer_name: string | null;
+}
+
+/** An order line item joined with product name/sku. */
+export interface OrderItemRow {
+  id: string;
+  order_id: string;
+  product_id: string;
+  product_name: string;
+  product_sku: string;
+  quantity: number;
+  unit_price: string;
+  cost_price: string;
+  subtotal: string;
+}
+
+/** A status-history entry joined with the user who made the change. */
+export interface OrderStatusHistoryItem {
+  id: string;
+  order_id: string;
+  old_status: OrderStatus | null;
+  new_status: OrderStatus;
+  changed_by: string;
+  changed_by_name: string;
+  notes: string | null;
+  created_at: string;
+}
+
+/** Full detail for a single order: header + rep/customer + geography scope. */
+export interface OrderDetail {
+  id: string;
+  order_number: string;
+  order_type: OrderType;
+  status: OrderStatus;
+  order_date: string;
+  expected_delivery: string | null;
+  total_amount: string;
+  discount_amount: string;
+  net_amount: string;
+  notes: string | null;
+  approved_by: string | null;
+  approved_by_name: string | null;
+  approved_at: string | null;
+  delivered_at: string | null;
+  created_at: string;
+  updated_at: string;
+  representative_id: string;
+  representative_name: string;
+  rep_user_id: string;
+  rep_division_id: string;
+  rep_district_id: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+}
+
+// -----------------------------------------------------------------------------
+// Task 6 — Projects, Profit & Investment Distribution.
+// Column names mirror the PostgreSQL schema exactly. DECIMAL money/units come
+// back from node-postgres as strings; parse with Number() where doing math.
+// -----------------------------------------------------------------------------
+
+export type ProjectStatus =
+  | "draft"
+  | "in_progress"
+  | "completed"
+  | "profit_distributed"
+  | "cancelled";
+
+export type BeneficiaryRole =
+  | "representative"
+  | "district_head"
+  | "divisional_head"
+  | "hq";
+
+export type DistributionType = "profit_share" | "investment_return";
+
+export type PayoutSchedule = "monthly" | "annual";
+
+export type DistributionStatus = "pending" | "approved" | "paid";
+
+/** A row from profit_distribution_config (versioned three-way split). */
+export interface ProfitConfigRow {
+  id: string;
+  representative_percentage: string;
+  hq_percentage: string;
+  investment_percentage: string;
+  effective_from: string;
+  effective_to: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** A row from investment_pool_config (versioned per-unit amount). */
+export interface InvestmentConfigRow {
+  id: string;
+  per_unit_amount: string;
+  total_working_capital: string | null;
+  effective_from: string;
+  effective_to: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+/** Inputs for creating a project (financials pre-parsed to numbers). */
+export interface ProjectInput {
+  representative_id: string;
+  customer_id: string | null;
+  title: string;
+  description: string | null;
+  project_value: number;
+  vat_tax_percentage: number;
+  vat_tax_amount: number;
+  total_cost: number;
+  status: "draft" | "in_progress";
+}
+
+/** A project row for the list, joined with rep + geography + customer names. */
+export interface ProjectListItem {
+  id: string;
+  project_number: string;
+  title: string;
+  status: ProjectStatus;
+  project_value: string;
+  net_profit: string;
+  profit_year: number | null;
+  completed_date: string | null;
+  created_at: string;
+  representative_id: string;
+  representative_name: string;
+  rep_user_id: string;
+  upazila_id: string;
+  upazila_name: string;
+  district_id: string;
+  district_name: string;
+  division_id: string;
+  division_name: string;
+  customer_id: string | null;
+  customer_name: string | null;
+}
+
+/** Full detail for a single project: financials + split + scope. */
+export interface ProjectDetail {
+  id: string;
+  project_number: string;
+  title: string;
+  description: string | null;
+  status: ProjectStatus;
+  project_value: string;
+  vat_tax_percentage: string;
+  vat_tax_amount: string;
+  total_cost: string;
+  net_profit: string;
+  rep_share_amount: string;
+  hq_share_amount: string;
+  investment_share_amount: string;
+  investment_return_per_unit: string;
+  completed_date: string | null;
+  profit_year: number | null;
+  created_at: string;
+  updated_at: string;
+  representative_id: string;
+  representative_name: string;
+  rep_user_id: string;
+  rep_investment_units: string;
+  rep_is_district_head: boolean;
+  upazila_id: string;
+  upazila_name: string;
+  upazila_is_sadar: boolean;
+  district_id: string;
+  district_name: string;
+  division_id: string;
+  division_name: string;
+  customer_id: string | null;
+  customer_name: string | null;
+}
+
+/** A project_distributions row joined with the beneficiary's name. */
+export interface DistributionRow {
+  id: string;
+  project_id: string;
+  project_number: string;
+  project_title: string;
+  beneficiary_user_id: string | null;
+  beneficiary_rep_id: string | null;
+  beneficiary_role: BeneficiaryRole;
+  beneficiary_name: string;
+  distribution_type: DistributionType;
+  units: string;
+  rate_or_percentage: string | null;
+  amount: string;
+  payout_schedule: PayoutSchedule;
+  payout_year: number | null;
+  payout_month: number | null;
+  status: DistributionStatus;
+  paid_date: string | null;
+  payout_reference: string | null;
+  created_at: string;
+}
