@@ -11,6 +11,7 @@ import {
 import type { OrderStatus } from "@/lib/types";
 import { OrderStatusBadge, OrderTypeBadge } from "../status-badge";
 import { StatusControls, type StatusAction } from "./status-controls";
+import { DocumentsSection } from "@/components/documents-section";
 
 export const dynamic = "force-dynamic";
 
@@ -316,6 +317,9 @@ export default async function OrderDetailPage({
           </ol>
         )}
       </section>
+
+      {/* Documents */}
+      <DocumentsSection relatedType="order" relatedId={order.id} />
     </div>
   );
 }

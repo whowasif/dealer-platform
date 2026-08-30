@@ -16,6 +16,7 @@ import {
   DistributionStatusBadge,
 } from "../status-badge";
 import { DistributeControls } from "./distribute-controls";
+import { DocumentsSection } from "@/components/documents-section";
 
 export const dynamic = "force-dynamic";
 
@@ -351,6 +352,9 @@ export default async function ProjectDetailPage({
           This project is cancelled and cannot be distributed.
         </p>
       ) : null}
+
+      {/* Documents */}
+      <DocumentsSection relatedType="project" relatedId={project.id} />
     </div>
   );
 }

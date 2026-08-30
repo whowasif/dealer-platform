@@ -589,3 +589,183 @@ export interface DistributionRow {
   payout_reference: string | null;
   created_at: string;
 }
+
+// -----------------------------------------------------------------------------
+// Task 7 — Fees, Payments & Financial Ledger.
+// Column names mirror the PostgreSQL schema exactly (section 8). DECIMAL money
+// comes back from node-postgres as strings; parse with Number() where doing math.
+// -----------------------------------------------------------------------------
+
+export type FeeType = "monthly_software" | "contract_renewal" | "other";
+
+export type FeeInvoiceStatus = "pending" | "paid" | "overdue" | "waived";
+
+/** payments.payment_type is a free-ish VARCHAR; these are the expected values. */
+export type PaymentType =
+  | "deposit"
+  | "fee"
+  | "order_payment"
+  | "renewal"
+  | "other";
+
+/** A row from fee_schedules (versioned per fee_type by an effective window). */
+export interface FeeScheduleRow {
+  id: string;
+  fee_type: FeeType;
+  amount: string; // DECIMAL -> string
+  description: string | null;
+  effective_from: string;
+  effective_to: string | null;
+  created_at: string;
+}
+
+/** A fee_invoices row joined with the representative's name + geography. */
+export interface FeeInvoiceListItem {
+  id: string;
+  representative_id: string;
+  representative_name: string;
+  rep_user_id: string;
+  rep_division_id: string;
+  rep_district_id: string;
+  fee_type: FeeType;
+  period_start: string;
+  period_end: string;
+  amount: string;
+  due_date: string;
+  status: FeeInvoiceStatus;
+  paid_date: string | null;
+  payment_reference: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Virtual flag: status = 'pending' AND due_date < today. */
+  is_overdue: boolean;
+}
+
+/** A payments row joined with the representative's name + geography + verifier. */
+export interface PaymentListItem {
+  id: string;
+  representative_id: string;
+  representative_name: string;
+  rep_user_id: string;
+  rep_division_id: string;
+  rep_district_id: string;
+  payment_type: PaymentType;
+  amount: string;
+  payment_date: string;
+  payment_method: PaymentMethod;
+  reference_no: string;
+  related_invoice_id: string | null;
+  verified: boolean;
+  verified_by: string | null;
+  verified_by_name: string | null;
+  verified_at: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+/** A financial_ledger row (already carries its running balance). */
+export interface LedgerRow {
+  id: string;
+  representative_id: string;
+  transaction_date: string;
+  transaction_type: string;
+  description: string;
+  debit: string;
+  credit: string;
+  balance: string;
+  reference_type: string | null;
+  reference_id: string | null;
+  created_at: string;
+}
+
+// -----------------------------------------------------------------------------
+// Task 8 — Documents & Document Categories (section 9).
+// Column names mirror the PostgreSQL schema exactly. DECIMAL money (amount)
+// comes back from node-postgres as a string; parse with Number() where needed.
+// -----------------------------------------------------------------------------
+
+/** What an entity a document can be linked to (documents.related_type). */
+export type DocumentRelatedType =
+  | "representative"
+  | "project"
+  | "order"
+  | "customer"
+  | "user";
+
+/** A row from document_categories (seeded, extensible). */
+export interface DocumentCategoryRow {
+  id: string;
+  name: string;
+  bn_name: string | null;
+  description: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+/** A document row for the list, joined with category + uploader + link label. */
+export interface DocumentListItem {
+  id: string;
+  category_id: string;
+  category_name: string;
+  category_bn_name: string | null;
+  related_type: DocumentRelatedType | null;
+  related_id: string | null;
+  representative_id: string | null;
+  project_id: string | null;
+  title: string;
+  file_url: string;
+  file_size: number | null;
+  mime_type: string | null;
+  document_number: string | null;
+  document_date: string | null;
+  amount: string | null;
+  verified: boolean;
+  expiry_date: string | null;
+  tags: string[];
+  uploaded_by: string | null;
+  uploaded_by_name: string | null;
+  uploaded_at: string;
+  /** Human label describing what the document is linked to. */
+  link_label: string | null;
+}
+
+/** Full document detail incl. category, uploader, verifier + owner scope info. */
+export interface DocumentDetail {
+  id: string;
+  category_id: string;
+  category_name: string;
+  category_bn_name: string | null;
+  related_type: DocumentRelatedType | null;
+  related_id: string | null;
+  representative_id: string | null;
+  project_id: string | null;
+  title: string;
+  file_url: string;
+  file_size: number | null;
+  mime_type: string | null;
+  document_number: string | null;
+  document_date: string | null;
+  amount: string | null;
+  verified: boolean;
+  verified_by: string | null;
+  verified_by_name: string | null;
+  verified_at: string | null;
+  expiry_date: string | null;
+  tags: string[];
+  notes: string | null;
+  uploaded_by: string | null;
+  uploaded_by_name: string | null;
+  uploaded_at: string;
+  /** Human label describing what the document is linked to. */
+  link_label: string | null;
+  /**
+   * Owner scope resolved from the linked entity (when tied to a rep/project/
+   * order/customer). Used to authorize viewing/downloading. All null when the
+   * document is not tied to a representative (then HQ-only / uploader).
+   */
+  owner_rep_id: string | null;
+  owner_rep_user_id: string | null;
+  owner_division_id: string | null;
+  owner_district_id: string | null;
+}

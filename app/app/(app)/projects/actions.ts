@@ -254,12 +254,15 @@ export async function createInvestmentConfigAction(
   const c = parsed.data;
 
   try {
-    await createInvestmentConfig({
-      per_unit_amount: c.per_unit_amount,
-      total_working_capital: c.total_working_capital ?? null,
-      effective_from: c.effective_from,
-      notes: c.notes ?? null,
-    });
+    await createInvestmentConfig(
+      {
+        per_unit_amount: c.per_unit_amount,
+        total_working_capital: c.total_working_capital ?? null,
+        effective_from: c.effective_from,
+        notes: c.notes ?? null,
+      },
+      actor.id
+    );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Could not save config.";
     return { error: msg };

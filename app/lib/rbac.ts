@@ -60,7 +60,11 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Customers", href: "/customers" },
       { label: "Projects", href: "/projects" },
       { label: "Profit Config", href: "/projects/config" },
+      { label: "Fees & Payments", href: "/fees" },
+      { label: "Documents", href: "/documents" },
       { label: "Reports (National)", href: "/reports" },
+      { label: "Disciplinary", href: "/disciplinary" },
+      { label: "Complaints", href: "/complaints" },
       { label: "Settings", href: "/settings" },
       { label: "Audit", href: "/audit" },
     ];
@@ -74,7 +78,11 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Orders", href: "/orders" },
       { label: "Customers", href: "/customers" },
       { label: "Projects", href: "/projects" },
+      { label: "Fees", href: "/fees" },
+      { label: "Documents", href: "/documents" },
       { label: "Reports (Division)", href: "/reports" },
+      { label: "Disciplinary", href: "/disciplinary" },
+      { label: "Complaints", href: "/complaints" },
     ];
   }
 
@@ -86,7 +94,10 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Orders", href: "/orders" },
       { label: "Customers", href: "/customers" },
       { label: "Projects", href: "/projects" },
+      { label: "Fees", href: "/fees" },
+      { label: "Documents", href: "/documents" },
       { label: "Reports (District)", href: "/reports" },
+      { label: "Complaints", href: "/complaints" },
     ];
   }
 
@@ -100,7 +111,10 @@ export function menuForUser(user: SessionUser): MenuItem[] {
     { label: "My Customers", href: "/customers" },
     { label: "My Projects", href: "/projects" },
     { label: "New Project", href: "/projects/new" },
+    { label: "My Fees", href: "/fees" },
     { label: "My Documents", href: "/documents" },
+    { label: "Complaints", href: "/complaints" },
+    { label: "Notifications", href: "/notifications" },
     { label: "My Profile", href: "/profile" },
   ];
 }

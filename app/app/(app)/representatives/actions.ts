@@ -10,6 +10,7 @@ import {
   getRepresentative,
 } from "@/lib/representatives";
 import { nextContractNumber } from "@/lib/contracts";
+import { recordAudit } from "@/lib/audit";
 import type {
   ContractStatus,
   PackageRow,
@@ -211,6 +212,14 @@ export async function updateRepresentativeStatusAction(
           WHERE id = $3`,
         [next_status, terminating, representative_id]
       );
+      await recordAudit(client, {
+        userId: actor.id,
+        action: "status",
+        tableName: "representatives",
+        recordId: representative_id,
+        oldValue: { status: rep.status },
+        newValue: { status: next_status },
+      });
     });
   } catch {
     return { error: "Could not update status. Please try again." };

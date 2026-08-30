@@ -8,6 +8,7 @@ import { listUpazilas } from "@/lib/users";
 import { CustomerTypeBadge } from "../type-badge";
 import { OrderStatusBadge } from "../../orders/status-badge";
 import { CustomerForm } from "../customer-form";
+import { DocumentsSection } from "@/components/documents-section";
 
 export const dynamic = "force-dynamic";
 
@@ -168,6 +169,9 @@ export default async function CustomerDetailPage({
           </details>
         </section>
       ) : null}
+
+      {/* Documents */}
+      <DocumentsSection relatedType="customer" relatedId={customer.id} />
     </div>
   );
 }

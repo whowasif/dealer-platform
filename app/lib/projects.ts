@@ -4,6 +4,7 @@ import { query, queryOne, withTransaction } from "./db";
 import { isHQ } from "./rbac";
 import { repScopeForUser } from "./representatives";
 import { getActiveProfitConfigTx, getActiveInvestmentConfigTx } from "./profit-config";
+import { recordAudit } from "./audit";
 import {
   computeDistribution,
   round2,
@@ -535,6 +536,22 @@ export async function distributeProject(
         projectId,
       ]
     );
+
+    // Audit (same transaction): a compact snapshot of the distribution outcome.
+    await recordAudit(client, {
+      userId: user.id,
+      action: "distribute",
+      tableName: "projects",
+      recordId: projectId,
+      oldValue: { status: p.status },
+      newValue: {
+        status: "profit_distributed",
+        rep_share_amount: result.rep_share_amount,
+        hq_share_amount: result.hq_share_amount,
+        investment_share_amount: result.investment_share_amount,
+        profit_year: profitYear,
+      },
+    });
 
     return { project_number: p.project_number };
   });

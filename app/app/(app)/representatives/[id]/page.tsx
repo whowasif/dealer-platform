@@ -9,10 +9,38 @@ import {
 } from "@/lib/representatives";
 import { listContracts } from "@/lib/contracts";
 import { listDeposits, sumDeposits } from "@/lib/deposits";
+import { getLedger, getCurrentBalance } from "@/lib/ledger";
+import {
+  listInvoicesForRep,
+  listPaymentsForRep,
+  getRepFeeSummary,
+} from "@/lib/fees";
+import {
+  listDisciplinaryForRep,
+  canManageDisciplinary,
+} from "@/lib/disciplinary";
 import { StatusBadge, ContractStatusBadge } from "../status-badge";
+import { InvoiceStatusBadge, VerifiedBadge } from "../../fees/fee-badges";
 import { StatusControls } from "./status-controls";
 import { DepositForm } from "./deposit-form";
 import { ContractPanel } from "./contract-panel";
+import { DocumentsSection } from "@/components/documents-section";
+import {
+  CreateDisciplinaryPanel,
+  ResolvePanel,
+} from "../../disciplinary/disciplinary-panels";
+
+const DISCIPLINARY_LABEL: Record<string, string> = {
+  written_warning: "Written warning",
+  suspension: "Suspension",
+  termination: "Termination",
+};
+
+const FEE_LABEL: Record<string, string> = {
+  monthly_software: "Monthly software",
+  contract_renewal: "Contract renewal",
+  other: "Other",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -50,12 +78,29 @@ export default async function RepresentativeDetailPage({
     rep.division_id
   );
 
-  const [contracts, deposits, districtHead] = await Promise.all([
+  const [
+    contracts,
+    deposits,
+    districtHead,
+    ledger,
+    balance,
+    invoices,
+    payments,
+    feeSummary,
+    disciplinary,
+  ] = await Promise.all([
     listContracts(rep.id),
     listDeposits(rep.id),
     getDistrictHeadFor(rep),
+    getLedger(rep.id),
+    getCurrentBalance(rep.id),
+    listInvoicesForRep(rep.id),
+    listPaymentsForRep(rep.id),
+    getRepFeeSummary(rep.id),
+    listDisciplinaryForRep(rep.id),
   ]);
   const totals = sumDeposits(deposits);
+  const canDiscipline = canManageDisciplinary(user);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -317,6 +362,283 @@ export default async function RepresentativeDetailPage({
           </div>
         ) : null}
       </section>
+
+      {/* Financial ledger */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Financial ledger
+          </h2>
+          <div className="text-right">
+            <p className="text-xs uppercase tracking-wide text-slate-400">
+              Current balance
+            </p>
+            <p
+              className={`text-lg font-bold ${
+                balance > 0
+                  ? "text-red-700"
+                  : balance < 0
+                    ? "text-green-700"
+                    : "text-slate-800"
+              }`}
+            >
+              {money(balance)}
+            </p>
+            <p className="text-xs text-slate-400">
+              {balance > 0
+                ? "Owed to HQ"
+                : balance < 0
+                  ? "In credit"
+                  : "Settled"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-4 grid grid-cols-2 gap-3 text-xs text-slate-500 sm:grid-cols-4">
+          <span>
+            Invoiced: <strong>{money(feeSummary.total_invoiced)}</strong>
+          </span>
+          <span>
+            Paid: <strong>{money(feeSummary.total_paid)}</strong>
+          </span>
+          <span>
+            Pending: <strong>{feeSummary.pending_count}</strong>
+          </span>
+          <span>
+            Overdue:{" "}
+            <strong
+              className={feeSummary.overdue_count > 0 ? "text-red-700" : ""}
+            >
+              {feeSummary.overdue_count}
+            </strong>
+          </span>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Date</th>
+                <th className="px-3 py-2 font-medium">Description</th>
+                <th className="px-3 py-2 text-right font-medium">Debit</th>
+                <th className="px-3 py-2 text-right font-medium">Credit</th>
+                <th className="px-3 py-2 text-right font-medium">Balance</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {ledger.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-3 py-6 text-center text-slate-400">
+                    No ledger entries yet.
+                  </td>
+                </tr>
+              ) : (
+                ledger.map((l) => (
+                  <tr key={l.id}>
+                    <td className="px-3 py-2 text-slate-600">
+                      {fmtDate(l.transaction_date)}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">{l.description}</td>
+                    <td className="px-3 py-2 text-right text-slate-700">
+                      {Number(l.debit) > 0 ? money(l.debit) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right text-green-700">
+                      {Number(l.credit) > 0 ? money(l.credit) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium text-slate-800">
+                      {money(l.balance)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Fee invoices */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Fee invoices
+        </h2>
+        <div className="overflow-hidden rounded-lg border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Fee type</th>
+                <th className="px-3 py-2 font-medium">Period</th>
+                <th className="px-3 py-2 font-medium">Amount</th>
+                <th className="px-3 py-2 font-medium">Due date</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {invoices.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-3 py-6 text-center text-slate-400">
+                    No fee invoices yet.
+                  </td>
+                </tr>
+              ) : (
+                invoices.map((inv) => (
+                  <tr key={inv.id}>
+                    <td className="px-3 py-2 text-slate-600">
+                      {FEE_LABEL[inv.fee_type] ?? inv.fee_type}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">
+                      {fmtDate(inv.period_start)}
+                      <span className="text-slate-400">
+                        {" "}
+                        – {fmtDate(inv.period_end)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 font-medium text-slate-800">
+                      {money(inv.amount)}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">
+                      {fmtDate(inv.due_date)}
+                    </td>
+                    <td className="px-3 py-2">
+                      <InvoiceStatusBadge
+                        status={inv.status}
+                        isOverdue={inv.is_overdue}
+                      />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Payments */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Payments
+        </h2>
+        <div className="overflow-hidden rounded-lg border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Date</th>
+                <th className="px-3 py-2 font-medium">Type</th>
+                <th className="px-3 py-2 font-medium">Amount</th>
+                <th className="px-3 py-2 font-medium">Method</th>
+                <th className="px-3 py-2 font-medium">Reference</th>
+                <th className="px-3 py-2 font-medium">Verified</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {payments.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
+                    No payments recorded yet.
+                  </td>
+                </tr>
+              ) : (
+                payments.map((p) => (
+                  <tr key={p.id}>
+                    <td className="px-3 py-2 text-slate-600">
+                      {fmtDate(p.payment_date)}
+                    </td>
+                    <td className="px-3 py-2 capitalize text-slate-600">
+                      {p.payment_type.replace(/_/g, " ")}
+                    </td>
+                    <td className="px-3 py-2 font-medium text-slate-800">
+                      {money(p.amount)}
+                    </td>
+                    <td className="px-3 py-2 capitalize text-slate-600">
+                      {p.payment_method.replace(/_/g, " ")}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">{p.reference_no}</td>
+                    <td className="px-3 py-2">
+                      <VerifiedBadge verified={p.verified} />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Disciplinary */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Disciplinary records
+        </h2>
+        <div className="overflow-hidden rounded-lg border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Action</th>
+                <th className="px-3 py-2 font-medium">Reason</th>
+                <th className="px-3 py-2 font-medium">Issued</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                {canDiscipline ? (
+                  <th className="px-3 py-2 font-medium">Resolve</th>
+                ) : null}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {disciplinary.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={canDiscipline ? 5 : 4}
+                    className="px-3 py-6 text-center text-slate-400"
+                  >
+                    No disciplinary records.
+                  </td>
+                </tr>
+              ) : (
+                disciplinary.map((dr) => (
+                  <tr key={dr.id} className="align-top">
+                    <td className="px-3 py-2 font-medium text-slate-800">
+                      {DISCIPLINARY_LABEL[dr.action_type] ?? dr.action_type}
+                    </td>
+                    <td className="max-w-xs px-3 py-2 text-slate-600">
+                      {dr.reason}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                      {fmtDate(dr.issued_date)}
+                    </td>
+                    <td className="px-3 py-2">
+                      {dr.resolved ? (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                          Resolved
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                          Active
+                        </span>
+                      )}
+                    </td>
+                    {canDiscipline ? (
+                      <td className="px-3 py-2">
+                        {dr.resolved ? (
+                          <span className="text-xs text-slate-400">—</span>
+                        ) : (
+                          <ResolvePanel id={dr.id} />
+                        )}
+                      </td>
+                    ) : null}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {canDiscipline ? (
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <CreateDisciplinaryPanel reps={[]} fixedRepId={rep.id} />
+          </div>
+        ) : null}
+      </section>
+
+      {/* Documents */}
+      <DocumentsSection relatedType="representative" relatedId={rep.id} />
 
       {rep.notes ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

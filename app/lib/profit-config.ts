@@ -1,6 +1,7 @@
 import "server-only";
 import type { PoolClient } from "pg";
 import { query, queryOne, withTransaction } from "./db";
+import { recordAudit } from "./audit";
 import type { InvestmentConfigRow, ProfitConfigRow } from "./types";
 
 // -----------------------------------------------------------------------------
@@ -199,7 +200,20 @@ export async function createProfitConfig(
         createdBy,
       ]
     );
-    return res.rows[0]!.id;
+    const id = res.rows[0]!.id;
+    await recordAudit(client, {
+      userId: createdBy,
+      action: "create",
+      tableName: "profit_distribution_config",
+      recordId: id,
+      newValue: {
+        representative_percentage: input.representative_percentage,
+        hq_percentage: input.hq_percentage,
+        investment_percentage: input.investment_percentage,
+        effective_from: input.effective_from,
+      },
+    });
+    return id;
   });
 }
 
@@ -216,7 +230,8 @@ export interface NewInvestmentConfig {
  * new row id.
  */
 export async function createInvestmentConfig(
-  input: NewInvestmentConfig
+  input: NewInvestmentConfig,
+  auditUserId?: string | null
 ): Promise<string> {
   if (!(input.per_unit_amount > 0)) {
     throw new Error("Per-unit amount must be greater than zero.");
@@ -252,6 +267,17 @@ export async function createInvestmentConfig(
         input.notes,
       ]
     );
-    return res.rows[0]!.id;
+    const id = res.rows[0]!.id;
+    await recordAudit(client, {
+      userId: auditUserId ?? null,
+      action: "create",
+      tableName: "investment_pool_config",
+      recordId: id,
+      newValue: {
+        per_unit_amount: input.per_unit_amount,
+        effective_from: input.effective_from,
+      },
+    });
+    return id;
   });
 }
