@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { withTransaction } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
-import { canManageUsers } from "@/lib/rbac";
+import { canMutateUsers } from "@/lib/rbac";
+import { recordAudit } from "@/lib/audit";
 
 // Optional string that becomes null when blank.
 const optionalString = z
@@ -40,8 +41,8 @@ const createUserSchema = z.object({
   nominee_phone: optionalString,
   nominee_address: optionalString,
   nominee_relation: optionalString,
-  // Roles: one or more role ids, with parallel scope arrays.
-  role_ids: z.array(z.string().uuid()).min(1, "Select at least one role"),
+  // Role: exactly one role, with a single scope group.
+  role_id: z.string().uuid("Select a role"),
 });
 
 export interface CreateUserState {
@@ -58,14 +59,12 @@ export async function createUserAction(
   _prev: CreateUserState,
   formData: FormData
 ): Promise<CreateUserState> {
-  // Server-side authorization: HQ only.
+  // Server-side authorization: super admin only for mutations.
   const actor = await getSessionUser();
   if (!actor) return { error: "Not authenticated." };
-  if (!canManageUsers(actor)) {
-    return { error: "You are not authorized to create users." };
+  if (!canMutateUsers(actor)) {
+    return { error: "Only the super admin can create users." };
   }
-
-  const roleIds = formData.getAll("role_ids").map(String).filter(Boolean);
 
   const parsed = createUserSchema.safeParse({
     full_name: formData.get("full_name"),
@@ -85,7 +84,7 @@ export async function createUserAction(
     nominee_phone: formData.get("nominee_phone"),
     nominee_address: formData.get("nominee_address"),
     nominee_relation: formData.get("nominee_relation"),
-    role_ids: roleIds,
+    role_id: formData.get("role_id"),
   });
 
   if (!parsed.success) {
@@ -95,19 +94,14 @@ export async function createUserAction(
   const d = parsed.data;
   const passwordHash = await bcrypt.hash(d.password, 10);
 
-  // Per-role scope: the form submits scope_division_<roleId> etc.
-  const scopesByRole = new Map<
-    string,
-    { division: string | null; district: string | null; upazila: string | null }
-  >();
-  for (const roleId of d.role_ids) {
-    scopesByRole.set(roleId, {
-      division: scopeToUuidOrNull(formData.get(`scope_division_${roleId}`)),
-      district: scopeToUuidOrNull(formData.get(`scope_district_${roleId}`)),
-      upazila: scopeToUuidOrNull(formData.get(`scope_upazila_${roleId}`)),
-    });
-  }
+  // Single scope group for the selected role.
+  const scope = {
+    division: scopeToUuidOrNull(formData.get("scope_division")),
+    district: scopeToUuidOrNull(formData.get("scope_district")),
+    upazila: scopeToUuidOrNull(formData.get("scope_upazila")),
+  };
 
+  let newUserId = "";
   try {
     await withTransaction(async (client) => {
       const inserted = await client.query<{ id: string }>(
@@ -142,24 +136,30 @@ export async function createUserAction(
         ]
       );
       const userId = inserted.rows[0].id;
+      newUserId = userId;
 
-      for (const roleId of d.role_ids) {
-        const scope = scopesByRole.get(roleId)!;
-        await client.query(
-          `INSERT INTO user_roles (
-              user_id, role_id, scope_division_id, scope_district_id,
-              scope_upazila_id, assigned_by
-           ) VALUES ($1,$2,$3,$4,$5,$6)`,
-          [
-            userId,
-            roleId,
-            scope.division,
-            scope.district,
-            scope.upazila,
-            actor.id,
-          ]
-        );
-      }
+      await client.query(
+        `INSERT INTO user_roles (
+            user_id, role_id, scope_division_id, scope_district_id,
+            scope_upazila_id, assigned_by
+         ) VALUES ($1,$2,$3,$4,$5,$6)`,
+        [
+          userId,
+          d.role_id,
+          scope.division,
+          scope.district,
+          scope.upazila,
+          actor.id,
+        ]
+      );
+
+      await recordAudit(client, {
+        userId: actor.id,
+        action: "create",
+        tableName: "users",
+        recordId: userId,
+        newValue: { full_name: d.full_name, phone: d.phone, role_id: d.role_id },
+      });
     });
   } catch (err: unknown) {
     // Surface unique-constraint violations in a friendly way.

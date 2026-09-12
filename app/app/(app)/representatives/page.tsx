@@ -5,7 +5,7 @@ import { isHQ } from "@/lib/rbac";
 import {
   listRepresentatives,
   repScopeForUser,
-  canManageRepresentatives,
+  canMutateRepresentatives,
   type RepListFilters,
 } from "@/lib/representatives";
 import { listDivisions, listDistricts } from "@/lib/users";
@@ -40,7 +40,7 @@ export default async function RepresentativesPage({
     listDistricts(),
   ]);
 
-  const canCreate = canManageRepresentatives(user);
+  const canCreate = canMutateRepresentatives(user);
 
   return (
     <div className="space-y-6">

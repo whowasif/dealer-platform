@@ -234,6 +234,14 @@ export function canManageRepresentatives(user: SessionUser): boolean {
 }
 
 /**
+ * True if the user may CREATE / MODIFY / DELETE representative records.
+ * Super admin only (per policy).
+ */
+export function canMutateRepresentatives(user: SessionUser): boolean {
+  return hasRole(user, "super_admin");
+}
+
+/**
  * Compute the district head for a representative: the rep sitting in the sadar
  * upazila of the same district. Returns null if none assigned yet (or if the
  * rep IS the district head).

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/session";
-import { canManageUsers } from "@/lib/rbac";
+import { canManageUsers, canMutateUsers } from "@/lib/rbac";
 import { listUsers } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +13,7 @@ export default async function UsersPage() {
   // Server-side authorization — not just hidden in the menu.
   if (!canManageUsers(user)) redirect("/dashboard");
 
+  const canMutate = canMutateUsers(user);
   const users = await listUsers();
 
   return (
@@ -24,12 +25,18 @@ export default async function UsersPage() {
             {users.length} account{users.length === 1 ? "" : "s"} in the system
           </p>
         </div>
-        <Link
-          href="/users/new"
-          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
-        >
-          + New user
-        </Link>
+        {canMutate ? (
+          <Link
+            href="/users/new"
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
+          >
+            + New user
+          </Link>
+        ) : (
+          <span className="text-xs text-slate-400">
+            View only — super admin manages users
+          </span>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

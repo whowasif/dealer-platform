@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import Link from "next/link";
+import { useCloseOnSuccess } from "@/components/use-close-on-success";
 import {
   createUserAction,
   type CreateUserState,
@@ -13,6 +14,7 @@ import type {
   RoleRow,
   UpazilaRow,
 } from "@/lib/types";
+import { PasswordInput } from "@/components/password-input";
 
 const initialState: CreateUserState = {};
 
@@ -42,13 +44,17 @@ function Field({
         {label}
         {required ? <span className="text-red-500"> *</span> : null}
       </span>
-      <input
-        name={name}
-        type={type}
-        required={required}
-        placeholder={placeholder}
-        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-      />
+      {type === "password" ? (
+        <PasswordInput name={name} required={required} placeholder={placeholder} />
+      ) : (
+        <input
+          name={name}
+          type={type}
+          required={required}
+          placeholder={placeholder}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+        />
+      )}
     </label>
   );
 }
@@ -124,7 +130,7 @@ function ScopeSelector({
     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
       {needDivision ? (
         <select
-          name={`scope_division_${role.id}`}
+          name="scope_division"
           value={divisionId}
           onChange={(e) => {
             setDivisionId(e.target.value);
@@ -143,7 +149,7 @@ function ScopeSelector({
 
       {needDistrict ? (
         <select
-          name={`scope_district_${role.id}`}
+          name="scope_district"
           value={districtId}
           onChange={(e) => setDistrictId(e.target.value)}
           disabled={!divisionId}
@@ -160,7 +166,7 @@ function ScopeSelector({
 
       {needUpazila ? (
         <select
-          name={`scope_upazila_${role.id}`}
+          name="scope_upazila"
           disabled={!districtId}
           className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100"
         >
@@ -188,16 +194,11 @@ export function CreateUserForm({
   upazilas: UpazilaRow[];
 }) {
   const [state, formAction] = useFormState(createUserAction, initialState);
-  const [checkedRoles, setCheckedRoles] = useState<Set<string>>(new Set());
+  // Single-select role (one role + one scope group per user at creation).
+  const [selectedRole, setSelectedRole] = useState<string>("");
 
-  function toggleRole(id: string, checked: boolean) {
-    setCheckedRoles((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }
+  // Auto-close: navigate back to the users list shortly after a successful save.
+  useCloseOnSuccess(state.success, { redirectTo: "/users" });
 
   return (
     <form action={formAction} className="space-y-5">
@@ -253,13 +254,13 @@ export function CreateUserForm({
         </div>
       </Section>
 
-      <Section title="Roles & scope">
+      <Section title="Role & scope">
         <p className="mb-3 text-xs text-slate-500">
-          Select one or more roles. Scoped roles require a geographic selection.
+          Select exactly one role. Scoped roles require a geographic selection.
         </p>
         <div className="space-y-3">
           {roles.map((role) => {
-            const checked = checkedRoles.has(role.id);
+            const checked = selectedRole === role.id;
             return (
               <div
                 key={role.id}
@@ -267,12 +268,12 @@ export function CreateUserForm({
               >
                 <label className="flex items-center gap-2">
                   <input
-                    type="checkbox"
-                    name="role_ids"
+                    type="radio"
+                    name="role_id"
                     value={role.id}
                     checked={checked}
-                    onChange={(e) => toggleRole(role.id, e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300"
+                    onChange={() => setSelectedRole(role.id)}
+                    className="h-4 w-4 border-slate-300"
                   />
                   <span className="text-sm font-medium text-slate-800">
                     {role.display_name}

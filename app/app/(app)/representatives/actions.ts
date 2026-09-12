@@ -6,7 +6,7 @@ import { withTransaction, queryOne } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import {
   canManageRepresentativeInDistrict,
-  canManageRepresentatives,
+  canMutateRepresentatives,
   getRepresentative,
 } from "@/lib/representatives";
 import { nextContractNumber } from "@/lib/contracts";
@@ -61,8 +61,8 @@ export async function onboardRepresentativeAction(
 ): Promise<ActionState> {
   const actor = await getSessionUser();
   if (!actor) return { error: "Not authenticated." };
-  if (!canManageRepresentatives(actor)) {
-    return { error: "You are not authorized to onboard representatives." };
+  if (!canMutateRepresentatives(actor)) {
+    return { error: "Only the super admin can onboard representatives." };
   }
 
   const parsed = onboardSchema.safeParse({

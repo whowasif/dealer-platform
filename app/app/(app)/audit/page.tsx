@@ -5,9 +5,21 @@ import {
   listAudit,
   auditTableNames,
   auditActions,
+  auditActors,
   type AuditFilters as AuditFilterValues,
 } from "@/lib/audit";
 import { AuditFilters } from "./audit-filters";
+
+/** Short, human-readable device string from a user-agent. */
+function deviceLabel(ua: string | null): string {
+  if (!ua) return "—";
+  if (/mobile/i.test(ua)) return "Mobile";
+  if (/edg/i.test(ua)) return "Edge";
+  if (/chrome/i.test(ua)) return "Chrome";
+  if (/firefox/i.test(ua)) return "Firefox";
+  if (/safari/i.test(ua)) return "Safari";
+  return "Browser";
+}
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Audit log — Dealer Network" };
@@ -80,7 +92,13 @@ function Diff({
 export default async function AuditPage({
   searchParams,
 }: {
-  searchParams: { table?: string; action?: string; from?: string; to?: string };
+  searchParams: {
+    table?: string;
+    action?: string;
+    user?: string;
+    from?: string;
+    to?: string;
+  };
 }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
@@ -90,14 +108,16 @@ export default async function AuditPage({
   const filters: AuditFilterValues = {
     tableName: searchParams.table || null,
     action: searchParams.action || null,
+    userId: searchParams.user || null,
     from: searchParams.from || null,
     to: searchParams.to || null,
   };
 
-  const [entries, tables, actions] = await Promise.all([
+  const [entries, tables, actions, actors] = await Promise.all([
     listAudit(user, filters),
     auditTableNames(),
     auditActions(),
+    auditActors(),
   ]);
 
   return (
@@ -114,11 +134,13 @@ export default async function AuditPage({
         current={{
           table: searchParams.table ?? "",
           action: searchParams.action ?? "",
+          user: searchParams.user ?? "",
           from: searchParams.from ?? "",
           to: searchParams.to ?? "",
         }}
         tables={tables}
         actions={actions}
+        actors={actors}
       />
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -130,13 +152,14 @@ export default async function AuditPage({
               <th className="px-4 py-3 font-medium">Action</th>
               <th className="px-4 py-3 font-medium">Table</th>
               <th className="px-4 py-3 font-medium">Record</th>
+              <th className="px-4 py-3 font-medium">Where</th>
               <th className="px-4 py-3 font-medium">Change</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {entries.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                   No audit entries match the current filters.
                 </td>
               </tr>
@@ -165,6 +188,17 @@ export default async function AuditPage({
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-slate-400">
                     {e.record_id.slice(0, 8)}…
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500">
+                    <div className="font-mono text-slate-600">
+                      {e.ip_address ?? "—"}
+                    </div>
+                    <div
+                      className="text-slate-400"
+                      title={e.user_agent ?? undefined}
+                    >
+                      {deviceLabel(e.user_agent)}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <Diff oldValue={e.old_value} newValue={e.new_value} />

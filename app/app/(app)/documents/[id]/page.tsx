@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/session";
 import { getDocument, canViewDocument, canManageDocuments } from "@/lib/documents";
 import { CategoryBadge, VerifiedBadge, LinkedEntity } from "../doc-badges";
 import { DocControls } from "./doc-controls";
+import { DocViewerActions } from "./viewer-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -179,9 +180,15 @@ export default async function DocumentDetailPage({
 
         {/* Preview */}
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Preview
-          </h2>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Preview
+            </h2>
+            <DocViewerActions
+              fileUrl={fileUrl}
+              kind={isImage ? "image" : isPdf ? "pdf" : "other"}
+            />
+          </div>
           {isImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img

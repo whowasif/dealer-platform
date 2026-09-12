@@ -12,7 +12,8 @@ import {
   canViewOrder,
   type OrderItemInput,
 } from "@/lib/orders";
-import { getCustomer, canAccessCustomer } from "@/lib/customers";
+import { getCustomer } from "@/lib/customers";
+import { notifyApproversOfNew } from "@/lib/approvals";
 
 // -----------------------------------------------------------------------------
 // Server actions for orders. Every action re-checks authorization server-side.
@@ -86,9 +87,20 @@ export async function createWarehouseOrderAction(
     return { error: msg };
   }
 
+  // Notify approvers (divisional head + HQ) — best-effort.
+  try {
+    await notifyApproversOfNew("order", orderId);
+  } catch {
+    /* non-fatal */
+  }
+
   revalidatePath("/orders");
   revalidatePath(`/orders/${orderId}`);
-  return { success: "Order placed. Awaiting HQ approval.", orderId };
+  return {
+    success:
+      "Order placed. Pending approval from your divisional head and HQ.",
+    orderId,
+  };
 }
 
 // ----------------------------- Customer sales --------------------------------

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/session";
 import {
-  canManageRepresentatives,
+  canMutateRepresentatives,
   listUsersWithoutRepresentative,
   listAvailableUpazilas,
 } from "@/lib/representatives";
@@ -16,7 +16,7 @@ export const metadata = { title: "Onboard representative — Dealer Network" };
 export default async function NewRepresentativePage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
-  if (!canManageRepresentatives(user)) redirect("/representatives");
+  if (!canMutateRepresentatives(user)) redirect("/representatives");
 
   const [candidates, upazilas, divisions, districts, packages] =
     await Promise.all([

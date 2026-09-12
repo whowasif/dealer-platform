@@ -12,10 +12,18 @@ export function AuditFilters({
   current,
   tables,
   actions,
+  actors,
 }: {
-  current: { table: string; action: string; from: string; to: string };
+  current: {
+    table: string;
+    action: string;
+    user: string;
+    from: string;
+    to: string;
+  };
   tables: string[];
   actions: string[];
+  actors: { id: string; name: string }[];
 }) {
   const router = useRouter();
 
@@ -24,6 +32,7 @@ export function AuditFilters({
     const params = new URLSearchParams();
     if (merged.table) params.set("table", merged.table);
     if (merged.action) params.set("action", merged.action);
+    if (merged.user) params.set("user", merged.user);
     if (merged.from) params.set("from", merged.from);
     if (merged.to) params.set("to", merged.to);
     const qs = params.toString();
@@ -31,7 +40,11 @@ export function AuditFilters({
   }
 
   const hasFilters =
-    current.table || current.action || current.from || current.to;
+    current.table ||
+    current.action ||
+    current.user ||
+    current.from ||
+    current.to;
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -57,6 +70,19 @@ export function AuditFilters({
         {actions.map((a) => (
           <option key={a} value={a}>
             {a}
+          </option>
+        ))}
+      </select>
+
+      <select
+        value={current.user}
+        onChange={(e) => apply({ user: e.target.value })}
+        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+      >
+        <option value="">All users</option>
+        {actors.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.name}
           </option>
         ))}
       </select>

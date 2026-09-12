@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/session";
-import { canManageUsers } from "@/lib/rbac";
+import { canMutateUsers } from "@/lib/rbac";
 import {
   listRoles,
   listDivisions,
@@ -16,7 +16,8 @@ export const metadata = { title: "New user — Dealer Network" };
 export default async function NewUserPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
-  if (!canManageUsers(user)) redirect("/dashboard");
+  // Only the super admin may create users.
+  if (!canMutateUsers(user)) redirect("/users");
 
   const [roles, divisions, districts, upazilas] = await Promise.all([
     listRoles(),

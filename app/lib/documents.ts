@@ -436,6 +436,29 @@ export async function listDocuments(
 }
 
 /**
+ * Counts of documents (scope-enforced) grouped into the three sub-sections used
+ * by the Documents tabs: project / user / representative. Reuses listDocuments
+ * so the exact same visibility rules apply.
+ */
+export async function documentTabCounts(
+  user: SessionUser,
+  base: DocumentListFilters = {}
+): Promise<{ project: number; user: number; representative: number; all: number }> {
+  const [proj, usr, rep, all] = await Promise.all([
+    listDocuments(user, { ...base, relatedType: "project" }),
+    listDocuments(user, { ...base, relatedType: "user" }),
+    listDocuments(user, { ...base, relatedType: "representative" }),
+    listDocuments(user, base),
+  ]);
+  return {
+    project: proj.length,
+    user: usr.length,
+    representative: rep.length,
+    all: all.length,
+  };
+}
+
+/**
  * List documents linked to a specific entity (for the compact sections on the
  * rep/project/order/customer detail pages). Scope is still enforced.
  */

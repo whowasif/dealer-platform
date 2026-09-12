@@ -160,3 +160,15 @@ export async function auditActions(): Promise<string[]> {
   );
   return rows.map((r) => r.action);
 }
+
+/** Distinct acting users present in the log (for the actor filter dropdown). */
+export async function auditActors(): Promise<
+  { id: string; name: string }[]
+> {
+  return query<{ id: string; name: string }>(
+    `SELECT DISTINCT u.id, u.full_name AS name
+       FROM audit_log al
+       JOIN users u ON u.id = al.user_id
+      ORDER BY u.full_name`
+  );
+}

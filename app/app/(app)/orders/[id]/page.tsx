@@ -12,6 +12,8 @@ import type { OrderStatus } from "@/lib/types";
 import { OrderStatusBadge, OrderTypeBadge } from "../status-badge";
 import { StatusControls, type StatusAction } from "./status-controls";
 import { DocumentsSection } from "@/components/documents-section";
+import { getApproval, approvalStatus } from "@/lib/approvals";
+import { ApprovalPanel } from "@/components/approval-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +85,12 @@ export default async function OrderDetailPage({
   const hq = isHQ(user);
   const isOwner = order.rep_user_id === user.id;
 
+  // Dual approval applies to warehouse orders while still pending.
+  const needsDualApproval =
+    order.order_type === "warehouse_order" && order.status === "pending";
+  const approvalRow = needsDualApproval ? await getApproval("order", order.id) : null;
+  const approval = approvalRow ? approvalStatus(user, approvalRow) : null;
+
   // Compute which status controls the current viewer may use.
   let actions: StatusAction[] = [];
   if (order.order_type === "warehouse_order") {
@@ -92,7 +100,10 @@ export default async function OrderDetailPage({
         // HQ can cancel; a rep can cancel their own order only while pending.
         return hq || (isOwner && order.status === "pending");
       }
-      // approval / fulfilment / returned are HQ-only.
+      // While pending, approval is handled by the dual-approval panel — hide the
+      // one-click "approved" transition so it can't bypass the two stages.
+      if (a.status === "approved" && needsDualApproval) return false;
+      // Other fulfilment / returned transitions are HQ-only.
       return hq;
     });
   }
@@ -262,6 +273,17 @@ export default async function OrderDetailPage({
             {order.notes}
           </p>
         </section>
+      ) : null}
+
+      {/* Dual approval (divisional head + HQ) for pending warehouse orders */}
+      {needsDualApproval && approval ? (
+        <ApprovalPanel
+          kind="order"
+          id={order.id}
+          divisionApproved={approval.divisionApproved}
+          hqApproved={approval.hqApproved}
+          canApprove={approval.canApprove}
+        />
       ) : null}
 
       {/* Status controls — warehouse orders only, gated by role/ownership */}

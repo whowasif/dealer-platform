@@ -5,10 +5,14 @@ import { repScopeForUser } from "@/lib/representatives";
 import {
   listDocuments,
   listCategories,
+  documentTabCounts,
   type DocumentListFilters,
 } from "@/lib/documents";
 import { DocumentFilters } from "./doc-filters";
+import { DocTabs } from "./doc-tabs";
 import { CategoryBadge, VerifiedBadge, LinkedEntity } from "./doc-badges";
+
+const VALID_TABS = ["project", "user", "representative"];
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Documents — Dealer Network" };
@@ -33,25 +37,43 @@ export default async function DocumentsPage({
   searchParams,
 }: {
   searchParams: {
+    tab?: string;
     category?: string;
     related_type?: string;
     verified?: string;
     search?: string;
+    date_from?: string;
+    date_to?: string;
   };
 }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
-  const filters: DocumentListFilters = {
+  const activeTab =
+    searchParams.tab && VALID_TABS.includes(searchParams.tab)
+      ? searchParams.tab
+      : "";
+
+  // The tab (if any) drives related_type; the explicit related_type filter is
+  // only used on the "All" tab.
+  const relatedType = activeTab || searchParams.related_type || null;
+
+  // Base filters (shared with the tab counts) exclude related_type so the tab
+  // counts reflect the other active filters.
+  const baseFilters: DocumentListFilters = {
     category: searchParams.category || null,
-    relatedType: searchParams.related_type || null,
     verified: searchParams.verified || null,
     search: searchParams.search || null,
+    dateFrom: searchParams.date_from || null,
+    dateTo: searchParams.date_to || null,
   };
 
-  const [documents, categories] = await Promise.all([
+  const filters: DocumentListFilters = { ...baseFilters, relatedType };
+
+  const [documents, categories, counts] = await Promise.all([
     listDocuments(user, filters),
     listCategories(),
+    documentTabCounts(user, baseFilters),
   ]);
 
   const scope = repScopeForUser(user);
@@ -75,13 +97,19 @@ export default async function DocumentsPage({
         </Link>
       </div>
 
+      <DocTabs active={activeTab} counts={counts} />
+
       <DocumentFilters
         categories={categories}
+        showRelatedType={activeTab === ""}
         current={{
+          tab: activeTab,
           category: searchParams.category ?? "",
           related_type: searchParams.related_type ?? "",
           verified: searchParams.verified ?? "",
           search: searchParams.search ?? "",
+          date_from: searchParams.date_from ?? "",
+          date_to: searchParams.date_to ?? "",
         }}
       />
 
