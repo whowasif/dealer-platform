@@ -15,7 +15,9 @@ import {
   getProject,
   canViewProject,
 } from "@/lib/projects";
-import { createProfitConfig, createInvestmentConfig } from "@/lib/profit-config";
+import { createProfitConfig, getActiveProfitConfig } from "@/lib/profit-config";
+import { createInvestmentSplitConfig } from "@/lib/investment-split-config";
+import { notifyApproversOfNew } from "@/lib/approvals";
 
 // -----------------------------------------------------------------------------
 // Server actions for the projects feature. Every action re-checks authorization
@@ -141,6 +143,15 @@ export async function createProjectAction(
     return { error: msg };
   }
 
+  // If the project starts as a draft, it needs dual approval — notify approvers.
+  if (input.status === "draft") {
+    try {
+      await notifyApproversOfNew("project", projectId);
+    } catch {
+      /* non-fatal */
+    }
+  }
+
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
   return { success: "Project created.", projectId };
@@ -227,24 +238,34 @@ export async function createProfitConfigAction(
   return { success: "New profit split saved." };
 }
 
-const investConfigSchema = z.object({
-  per_unit_amount: z.coerce.number().positive("Per-unit amount must be > 0."),
-  total_working_capital: z.coerce.number().min(0).optional(),
+// The investment 40% slice sub-split (executives / supervision+support / future
+// works), all as % of NET PROFIT. Top three must sum to the active investment
+// percentage; the two supervision sub-parts must sum to supervision %.
+const splitConfigSchema = z.object({
+  executive_percentage: z.coerce.number().min(0).max(100),
+  supervision_percentage: z.coerce.number().min(0).max(100),
+  future_works_percentage: z.coerce.number().min(0).max(100),
+  supervision_sub_percentage: z.coerce.number().min(0).max(100),
+  support_fund_sub_percentage: z.coerce.number().min(0).max(100),
   effective_from: z.string().trim().min(1, "Pick an effective date."),
   notes: optionalText,
 });
 
-export async function createInvestmentConfigAction(
+export async function createInvestmentSplitConfigAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
   const actor = await getSessionUser();
   if (!actor) return { error: "Not authenticated." };
-  if (!isHQ(actor)) return { error: "Only HQ can change the investment pool." };
+  if (!isHQ(actor))
+    return { error: "Only HQ can change the investment split." };
 
-  const parsed = investConfigSchema.safeParse({
-    per_unit_amount: formData.get("per_unit_amount"),
-    total_working_capital: formData.get("total_working_capital"),
+  const parsed = splitConfigSchema.safeParse({
+    executive_percentage: formData.get("executive_percentage"),
+    supervision_percentage: formData.get("supervision_percentage"),
+    future_works_percentage: formData.get("future_works_percentage"),
+    supervision_sub_percentage: formData.get("supervision_sub_percentage"),
+    support_fund_sub_percentage: formData.get("support_fund_sub_percentage"),
     effective_from: formData.get("effective_from"),
     notes: formData.get("notes"),
   });
@@ -253,14 +274,22 @@ export async function createInvestmentConfigAction(
   }
   const c = parsed.data;
 
+  // The top three must equal the CURRENT investment percentage (40 by default).
+  const profitCfg = await getActiveProfitConfig();
+  const investmentPct = Number(profitCfg?.investment_percentage ?? 40);
+
   try {
-    await createInvestmentConfig(
+    await createInvestmentSplitConfig(
       {
-        per_unit_amount: c.per_unit_amount,
-        total_working_capital: c.total_working_capital ?? null,
+        executive_percentage: c.executive_percentage,
+        supervision_percentage: c.supervision_percentage,
+        future_works_percentage: c.future_works_percentage,
+        supervision_sub_percentage: c.supervision_sub_percentage,
+        support_fund_sub_percentage: c.support_fund_sub_percentage,
         effective_from: c.effective_from,
         notes: c.notes ?? null,
       },
+      investmentPct,
       actor.id
     );
   } catch (err: unknown) {
@@ -269,5 +298,5 @@ export async function createInvestmentConfigAction(
   }
 
   revalidatePath("/projects/config");
-  return { success: "New investment pool config saved." };
+  return { success: "New investment split saved." };
 }

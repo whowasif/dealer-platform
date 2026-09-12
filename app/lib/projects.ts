@@ -3,7 +3,13 @@ import type { PoolClient } from "pg";
 import { query, queryOne, withTransaction } from "./db";
 import { isHQ } from "./rbac";
 import { repScopeForUser } from "./representatives";
-import { getActiveProfitConfigTx, getActiveInvestmentConfigTx } from "./profit-config";
+import { getActiveProfitConfigTx } from "./profit-config";
+import { getActiveInvestmentSplitConfigTx } from "./investment-split-config";
+import {
+  getActiveExecutiveShares,
+  getActiveExecutiveSharesTx,
+} from "./hq-executives";
+import { postFundEntryTx } from "./funds";
 import { recordAudit } from "./audit";
 import {
   computeDistribution,
@@ -11,6 +17,7 @@ import {
   round4,
   type DistributionBeneficiaries,
   type DistributionFinancials,
+  type ExecutiveShare,
 } from "./profit-engine";
 import type {
   DistributionRow,
@@ -29,27 +36,32 @@ export {
   type ComputedResult,
   type DistributionBeneficiaries,
   type DistributionFinancials,
+  type ExecutiveShare,
 } from "./profit-engine";
 
 // -----------------------------------------------------------------------------
-// Projects, profit & investment distribution engine (CORE FINANCIAL LOGIC).
+// Projects, profit & company-fund distribution engine (CORE FINANCIAL LOGIC).
 //
 // A project records a business deal that generates profit. Its net profit is
-// split three ways (representative / HQ / investment pool) using the currently
-// effective profit_distribution_config. The investment pool is then paid out
-// per invested unit to the parties connected to the project (main dealer,
-// district head, divisional head), with HQ keeping the remainder.
+// split three ways (representative 20% / HQ salary+admin 40% / investment 40%)
+// using the currently effective profit_distribution_config. The 40% investment
+// slice is a COMPANY FUND, sub-divided by investment_split_config into:
+//   * Executives Profit 15% -> split among active HQ executives by role_weight
+//   * Supervision + Support 5% -> ~3% supervision (district/divisional heads)
+//                                  + ~2% Representative Support Fund
+//   * Future Works Fund 20%
+// There is NO per-unit investment return and NO investment "units" (v5.0).
 //
 // The heart of this file is `computeDistribution` — a PURE, side-effect-free
 // function that turns project financials + config + resolved beneficiaries into
 // the exact list of distribution rows. It is unit-tested by scripts/verify.
 // `distributeProject` is the transactional wrapper that resolves beneficiaries
-// from the DB, snapshots the config onto the project, writes the rows, and locks
-// the project row so distribution can happen exactly once.
+// (executives, district/divisional heads) from the DB, snapshots the config onto
+// the project, writes the rows, posts the support/future-works fund accruals to
+// their ledgers, and locks the project row so distribution happens exactly once.
 //
 // Money DECIMALs come back from node-postgres as strings; all arithmetic uses
-// Number(). Stored money is rounded to 2 decimals; investment_return_per_unit is
-// stored at 4 decimals (DECIMAL(14,4)).
+// Number(). Stored money is rounded to 2 decimals.
 // -----------------------------------------------------------------------------
 
 // ------------------------------ Project numbers ------------------------------
@@ -288,7 +300,7 @@ export function canViewProject(user: SessionUser, project: ProjectDetail): boole
 // ------------------------ Beneficiary preview (read-only) --------------------
 
 /**
- * Resolve the three parties connected to a project WITHOUT locking or writing.
+ * Resolve the parties connected to a project WITHOUT locking or writing.
  * Used to render a "who will get what" preview before distribution.
  */
 export async function resolveBeneficiaries(
@@ -297,19 +309,14 @@ export async function resolveBeneficiaries(
   const dealer = {
     rep_id: project.representative_id,
     user_id: project.rep_user_id,
-    units: Number(project.rep_investment_units),
     is_district_head:
       project.rep_is_district_head === true || project.upazila_is_sadar === true,
   };
 
   let districtHead: DistributionBeneficiaries["districtHead"] = null;
   if (!dealer.is_district_head) {
-    const dh = await queryOne<{
-      rep_id: string;
-      user_id: string;
-      units: string;
-    }>(
-      `SELECT rep.id AS rep_id, rep.user_id, rep.investment_units AS units
+    const dh = await queryOne<{ rep_id: string; user_id: string }>(
+      `SELECT rep.id AS rep_id, rep.user_id
          FROM representatives rep
          JOIN upazilas up ON up.id = rep.upazila_id
         WHERE up.district_id = $1
@@ -319,11 +326,7 @@ export async function resolveBeneficiaries(
       [project.district_id, project.representative_id]
     );
     if (dh) {
-      districtHead = {
-        rep_id: dh.rep_id,
-        user_id: dh.user_id,
-        units: Number(dh.units),
-      };
+      districtHead = { rep_id: dh.rep_id, user_id: dh.user_id };
     }
   }
 
@@ -332,10 +335,13 @@ export async function resolveBeneficiaries(
     [project.division_id]
   );
 
+  const executives = await getActiveExecutiveShares();
+
   return {
     dealer,
     districtHead,
     divisionalHeadUserId: div?.head_user_id ?? null,
+    executives,
   };
 }
 
@@ -346,11 +352,13 @@ export async function resolveBeneficiaries(
  *   1. Lock the project row FOR UPDATE.
  *   2. Refuse if already 'profit_distributed' or 'cancelled'.
  *   3. Resolve the beneficiaries (district head rep in the sadar upazila of the
- *      district; divisional head user via divisions.head_user_id) with the row
- *      locked, so a concurrent distribute cannot double-write.
- *   4. Snapshot the active config percentages + per-unit onto the project.
+ *      district; divisional head user via divisions.head_user_id; the active HQ
+ *      executives with their role weights) with the row locked.
+ *   4. Snapshot the active profit + investment-split config.
  *   5. computeDistribution -> INSERT all project_distributions rows.
- *   6. Update the project (split amounts, per-unit, profit_year, status).
+ *   6. Post the Support Fund (~2%) and Future Works Fund (20%) accruals to
+ *      their ledgers.
+ *   7. Update the project (split amounts, profit_year, status).
  *
  * HQ-only authorization is enforced by the caller (server action) and re-checked
  * here as defense-in-depth.
@@ -380,7 +388,6 @@ export async function distributeProject(
       district_id: string;
       division_id: string;
       rep_user_id: string;
-      rep_units: string;
       rep_is_district_head: boolean;
       upazila_is_sadar: boolean;
     }>(
@@ -389,7 +396,6 @@ export async function distributeProject(
               p.completed_date, p.created_at,
               d.id AS district_id, dv.id AS division_id,
               rep.user_id AS rep_user_id,
-              rep.investment_units AS rep_units,
               rep.is_district_head AS rep_is_district_head,
               up.is_sadar AS upazila_is_sadar
          FROM projects p
@@ -427,9 +433,9 @@ export async function distributeProject(
     if (!profitCfg) {
       throw new Error("No profit-distribution config is effective for this project.");
     }
-    const investCfg = await getActiveInvestmentConfigTx(client, effectiveDate);
-    if (!investCfg) {
-      throw new Error("No investment-pool config is effective for this project.");
+    const splitCfg = await getActiveInvestmentSplitConfigTx(client, effectiveDate);
+    if (!splitCfg) {
+      throw new Error("No investment-split config is effective for this project.");
     }
 
     // 3. Resolve beneficiaries with the row locked.
@@ -438,12 +444,8 @@ export async function distributeProject(
 
     let districtHead: DistributionBeneficiaries["districtHead"] = null;
     if (!dealerIsDistrictHead) {
-      const dhRes = await client.query<{
-        rep_id: string;
-        user_id: string;
-        units: string;
-      }>(
-        `SELECT rep.id AS rep_id, rep.user_id, rep.investment_units AS units
+      const dhRes = await client.query<{ rep_id: string; user_id: string }>(
+        `SELECT rep.id AS rep_id, rep.user_id
            FROM representatives rep
            JOIN upazilas up ON up.id = rep.upazila_id
           WHERE up.district_id = $1
@@ -456,7 +458,6 @@ export async function distributeProject(
         districtHead = {
           rep_id: dhRes.rows[0].rep_id,
           user_id: dhRes.rows[0].user_id,
-          units: Number(dhRes.rows[0].units),
         };
       }
     }
@@ -467,31 +468,37 @@ export async function distributeProject(
     );
     const divisionalHeadUserId = divRes.rows[0]?.head_user_id ?? null;
 
+    const executives: ExecutiveShare[] = await getActiveExecutiveSharesTx(client);
+
     const beneficiaries: DistributionBeneficiaries = {
       dealer: {
         rep_id: p.representative_id,
         user_id: p.rep_user_id,
-        units: Number(p.rep_units),
         is_district_head: dealerIsDistrictHead,
       },
       districtHead,
       divisionalHeadUserId,
+      executives,
     };
 
-    // 5. Compute distribution (pure).
+    // 5. Compute distribution (pure). All *_percentage are % of NET PROFIT.
     const fin: DistributionFinancials = {
       net_profit: Number(p.net_profit),
-      total_cost: Number(p.total_cost),
       representative_percentage: Number(profitCfg.representative_percentage),
       hq_percentage: Number(profitCfg.hq_percentage),
       investment_percentage: Number(profitCfg.investment_percentage),
-      per_unit_amount: Number(investCfg.per_unit_amount),
+      executive_percentage: Number(splitCfg.executive_percentage),
+      supervision_percentage: Number(splitCfg.supervision_percentage),
+      future_works_percentage: Number(splitCfg.future_works_percentage),
+      supervision_sub_percentage: Number(splitCfg.supervision_sub_percentage),
+      support_fund_sub_percentage: Number(splitCfg.support_fund_sub_percentage),
     };
     const result = computeDistribution(fin, beneficiaries);
 
-    // 6. Insert all distribution rows.
+    // 6a. Insert all distribution rows. profit_share + monthly company_fund rows
+    // get a payout_month; annual company_fund rows (funds) get only a year.
     for (const row of result.rows) {
-      const isProfit = row.distribution_type === "profit_share";
+      const withMonth = row.payout_schedule === "monthly";
       await client.query(
         `INSERT INTO project_distributions
             (project_id, beneficiary_user_id, beneficiary_rep_id, beneficiary_role,
@@ -509,28 +516,50 @@ export async function distributeProject(
           row.amount,
           row.payout_schedule,
           profitYear,
-          isProfit ? payoutMonth : null,
+          withMonth ? payoutMonth : null,
         ]
       );
     }
 
-    // 7. Update the project header with the snapshot + status.
+    // 6b. Post the fund accruals to their ledgers (support fund + future works).
+    if (result.support_fund_amount > 0) {
+      await postFundEntryTx(client, "representative_support", {
+        description: `Support Fund accrual from project ${p.project_number}`,
+        credit: result.support_fund_amount,
+        reference_type: "project",
+        reference_id: projectId,
+        created_by: user.id,
+        transaction_date: effectiveDate,
+      });
+    }
+    if (result.future_works_amount > 0) {
+      await postFundEntryTx(client, "future_works", {
+        description: `Future Works Fund accrual from project ${p.project_number}`,
+        credit: result.future_works_amount,
+        reference_type: "project",
+        reference_id: projectId,
+        created_by: user.id,
+        transaction_date: effectiveDate,
+      });
+    }
+
+    // 7. Update the project header with the snapshot + status. The legacy
+    // investment_return_per_unit column is zeroed (unused in v5.0).
     await client.query(
       `UPDATE projects
           SET rep_share_amount = $1,
               hq_share_amount = $2,
               investment_share_amount = $3,
-              investment_return_per_unit = $4,
-              profit_year = $5,
-              completed_date = COALESCE(completed_date, $6::date),
+              investment_return_per_unit = 0,
+              profit_year = $4,
+              completed_date = COALESCE(completed_date, $5::date),
               status = 'profit_distributed',
               updated_at = NOW()
-        WHERE id = $7`,
+        WHERE id = $6`,
       [
         result.rep_share_amount,
         result.hq_share_amount,
         result.investment_share_amount,
-        result.investment_return_per_unit,
         profitYear,
         effectiveDate,
         projectId,

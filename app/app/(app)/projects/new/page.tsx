@@ -7,7 +7,8 @@ import {
   listRepresentatives,
 } from "@/lib/representatives";
 import { listCustomers } from "@/lib/customers";
-import { getActiveProfitConfig, getActiveInvestmentConfig } from "@/lib/profit-config";
+import { getActiveProfitConfig } from "@/lib/profit-config";
+import { getActiveInvestmentSplitConfig } from "@/lib/investment-split-config";
 import { NewProjectForm, type RepOption, type CustomerOption } from "./new-project-form";
 
 export const dynamic = "force-dynamic";
@@ -24,11 +25,11 @@ export default async function NewProjectPage() {
   // Only reps, heads, or HQ may create projects.
   if (!repId && !hq && !isHead) redirect("/projects");
 
-  const [reps, customers, profitCfg, investCfg] = await Promise.all([
+  const [reps, customers, profitCfg, splitCfg] = await Promise.all([
     listRepresentatives(user, {}),
     listCustomers(user, {}),
     getActiveProfitConfig(),
-    getActiveInvestmentConfig(),
+    getActiveInvestmentSplitConfig(),
   ]);
 
   const repOptions: RepOption[] = reps.map((r) => ({
@@ -52,7 +53,9 @@ export default async function NewProjectPage() {
     representative_percentage: Number(profitCfg?.representative_percentage ?? 20),
     hq_percentage: Number(profitCfg?.hq_percentage ?? 40),
     investment_percentage: Number(profitCfg?.investment_percentage ?? 40),
-    per_unit_amount: Number(investCfg?.per_unit_amount ?? 100000),
+    executive_percentage: Number(splitCfg?.executive_percentage ?? 15),
+    supervision_percentage: Number(splitCfg?.supervision_percentage ?? 5),
+    future_works_percentage: Number(splitCfg?.future_works_percentage ?? 20),
   };
 
   return (

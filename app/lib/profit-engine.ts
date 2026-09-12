@@ -1,17 +1,28 @@
 // -----------------------------------------------------------------------------
-// PURE profit/investment distribution engine — NO DB, NO clock, NO server-only.
+// PURE profit / company-fund distribution engine — NO DB, NO clock, NO server-only.
 //
-// This module holds the math-critical core of Task 6 so it can be unit-tested
-// in isolation (see scripts/verify-profit.ts). lib/projects.ts re-exports these
-// symbols; server code should import from lib/projects.ts.
+// v5.0 model. Net profit is split three ways by profit_distribution_config:
+//   * Representative   20%  -> profit_share, monthly
+//   * HQ (salary+admin)40%  -> profit_share, monthly (HQ pool, no user)
+//   * Investment       40%  -> a COMPANY FUND, sub-divided by investment_split_config:
+//        - Executives Profit    15% of net profit  -> company_fund, monthly,
+//                                                      one row per active HQ
+//                                                      executive, by role_weight.
+//        - Supervision + Support 5% of net profit  -> ~3% supervision incentive
+//                                                      (district + divisional
+//                                                      heads) + ~2% into the
+//                                                      Representative Support Fund.
+//        - Future Works Fund    20% of net profit  -> company_fund, annual.
 //
-// Rounding contract (so totals reconcile to the penny):
-//   - rep/hq/investment share amounts        -> round to 2dp
-//   - investment_return_per_unit             -> round to 4dp (stored precision)
-//   - each investment beneficiary amount     -> per_unit(4dp) * units, then 2dp
-//   - HQ investment remainder                -> investment_share_amount minus the
-//     SUM of the rounded beneficiary amounts (recorded even when 0). This makes
-//     dealer + district_head + divisional_head + HQ == investment_share_amount.
+// There is NO per-unit "investment return" and NO investment "units" anymore.
+//
+// Rounding contract (so every total reconciles to the penny):
+//   - rep / hq / investment slice amounts        -> round to 2dp
+//   - each sub-bucket (exec pool, supervision, support, future works) -> 2dp
+//   - per-executive amounts are weight-proportional; the LAST executive absorbs
+//     the exec-pool rounding residual.
+//   - the FUTURE WORKS row absorbs the investment-slice rounding residual, so
+//     (exec rows + supervision rows + support + future works) == investment slice.
 // -----------------------------------------------------------------------------
 
 import type {
@@ -25,28 +36,41 @@ export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-/** Round a per-unit rate to 4 decimal places (matches DECIMAL(14,4)). */
+/** Round a rate/percentage to 4 decimal places (matches DECIMAL(14,4)). */
 export function round4(n: number): number {
   return Math.round((n + Number.EPSILON) * 10000) / 10000;
 }
 
-/** Financial inputs to the distribution engine (all pre-parsed to numbers). */
+/**
+ * Financial inputs to the distribution engine (all pre-parsed to numbers).
+ * All *_percentage values are percentages of NET PROFIT.
+ */
 export interface DistributionFinancials {
   net_profit: number;
-  total_cost: number;
-  representative_percentage: number;
-  hq_percentage: number;
-  investment_percentage: number;
-  per_unit_amount: number;
+  // top-level 20/40/40 (profit_distribution_config)
+  representative_percentage: number; // 20
+  hq_percentage: number; // 40
+  investment_percentage: number; // 40
+  // investment sub-split (investment_split_config), all % of NET PROFIT
+  executive_percentage: number; // 15
+  supervision_percentage: number; // 5 (supervision incentive + support fund)
+  future_works_percentage: number; // 20
+  supervision_sub_percentage: number; // ~3 (supervision incentive)
+  support_fund_sub_percentage: number; // ~2 (support fund)
 }
 
-/** The three parties connected to a project, resolved from the DB. */
+/** One HQ executive who shares the executives-profit bucket by weight. */
+export interface ExecutiveShare {
+  user_id: string;
+  role_weight: number;
+}
+
+/** The parties connected to a project, resolved from the DB. */
 export interface DistributionBeneficiaries {
-  /** The main dealer (project's representative). */
+  /** The project's representative (gets the 20% profit share). */
   dealer: {
     rep_id: string;
     user_id: string;
-    units: number;
     /** True when this dealer sits in the sadar upazila (IS the district head). */
     is_district_head: boolean;
   };
@@ -58,13 +82,11 @@ export interface DistributionBeneficiaries {
   districtHead: {
     rep_id: string;
     user_id: string;
-    units: number;
   } | null;
-  /**
-   * The HQ-appointed divisional head user (divisions.head_user_id). Gets a fixed
-   * 1 unit for effort. Null if none appointed yet.
-   */
+  /** The HQ-appointed divisional head user (divisions.head_user_id), or null. */
   divisionalHeadUserId: string | null;
+  /** Active HQ executives sharing the 15% executives-profit bucket by weight. */
+  executives: ExecutiveShare[];
 }
 
 /** A computed distribution row (before it is persisted). */
@@ -73,6 +95,7 @@ export interface ComputedDistribution {
   beneficiary_rep_id: string | null;
   beneficiary_role: BeneficiaryRole;
   distribution_type: DistributionType;
+  /** Kept at 0 in v5.0 (units removed); column still exists in the schema. */
   units: number;
   rate_or_percentage: number | null;
   amount: number;
@@ -85,14 +108,18 @@ export interface ComputedResult {
   rep_share_amount: number;
   hq_share_amount: number;
   investment_share_amount: number;
-  investment_return_per_unit: number;
+  // sub-bucket snapshot amounts (of the investment slice)
+  executive_amount: number;
+  supervision_amount: number; // supervision incentive only (~3%)
+  support_fund_amount: number; // ~2%
+  future_works_amount: number; // 20%
   rows: ComputedDistribution[];
 }
 
 /**
  * PURE distribution engine. Given a project's financials, the active config
  * values, and the resolved beneficiaries, produce the exact list of
- * distribution rows plus the snapshot split amounts. No DB access, no clock.
+ * distribution rows plus the snapshot amounts. No DB access, no clock.
  */
 export function computeDistribution(
   fin: DistributionFinancials,
@@ -104,15 +131,22 @@ export function computeDistribution(
   const hqShare = round2((netProfit * fin.hq_percentage) / 100);
   const investmentShare = round2((netProfit * fin.investment_percentage) / 100);
 
-  // Per-unit investment return for THIS project (guard divide-by-zero).
-  const perUnit =
-    fin.total_cost > 0
-      ? round4((investmentShare / fin.total_cost) * fin.per_unit_amount)
-      : 0;
+  // Investment sub-buckets (all as % of NET PROFIT).
+  const execPool = round2((netProfit * fin.executive_percentage) / 100);
+  const supervisionPool = round2(
+    (netProfit * fin.supervision_sub_percentage) / 100
+  );
+  const supportFund = round2(
+    (netProfit * fin.support_fund_sub_percentage) / 100
+  );
+  // Future works absorbs the residual so the investment slice reconciles.
+  const futureWorks = round2(
+    investmentShare - execPool - supervisionPool - supportFund
+  );
 
   const rows: ComputedDistribution[] = [];
 
-  // --- Main dealer profit share (monthly) ---
+  // --- 1. Representative profit share (monthly) ---
   rows.push({
     beneficiary_user_id: ben.dealer.user_id,
     beneficiary_rep_id: ben.dealer.rep_id,
@@ -124,9 +158,9 @@ export function computeDistribution(
     payout_schedule: "monthly",
   });
 
-  // --- HQ profit share (monthly) ---
+  // --- 2. HQ salary & admin profit share (monthly, HQ pool) ---
   rows.push({
-    beneficiary_user_id: null, // NULL user for the HQ pool
+    beneficiary_user_id: null,
     beneficiary_rep_id: null,
     beneficiary_role: "hq",
     distribution_type: "profit_share",
@@ -136,79 +170,140 @@ export function computeDistribution(
     payout_schedule: "monthly",
   });
 
-  // --- Dealer investment return (annual) ---
-  let investmentPaidOut = 0;
-  const dealerInvest = round2(perUnit * ben.dealer.units);
-  rows.push({
-    beneficiary_user_id: ben.dealer.user_id,
-    beneficiary_rep_id: ben.dealer.rep_id,
-    beneficiary_role: "representative",
-    distribution_type: "investment_return",
-    units: ben.dealer.units,
-    rate_or_percentage: perUnit,
-    amount: dealerInvest,
-    payout_schedule: "annual",
-  });
-  investmentPaidOut += dealerInvest;
-
-  // --- District-head investment return (annual) ---
-  // SPECIAL CASE: when the dealer IS the district head, the SAME person gets a
-  // second investment_return row as district_head (scaled by their own units).
-  if (ben.dealer.is_district_head) {
-    const dhInvest = round2(perUnit * ben.dealer.units);
-    rows.push({
-      beneficiary_user_id: ben.dealer.user_id,
-      beneficiary_rep_id: ben.dealer.rep_id,
-      beneficiary_role: "district_head",
-      distribution_type: "investment_return",
-      units: ben.dealer.units,
-      rate_or_percentage: perUnit,
-      amount: dhInvest,
-      payout_schedule: "annual",
+  // --- 3. Executives profit (company_fund, monthly), split by role_weight ---
+  const activeExecs = ben.executives.filter((e) => e.role_weight > 0);
+  const totalWeight = activeExecs.reduce((s, e) => s + e.role_weight, 0);
+  if (activeExecs.length > 0 && totalWeight > 0) {
+    let execPaid = 0;
+    activeExecs.forEach((exec, i) => {
+      const isLast = i === activeExecs.length - 1;
+      // Last executive absorbs the exec-pool rounding residual.
+      const amount = isLast
+        ? round2(execPool - execPaid)
+        : round2((execPool * exec.role_weight) / totalWeight);
+      execPaid = round2(execPaid + amount);
+      rows.push({
+        beneficiary_user_id: exec.user_id,
+        beneficiary_rep_id: null,
+        beneficiary_role: "hq_executive",
+        distribution_type: "company_fund",
+        units: 0,
+        rate_or_percentage: round4(exec.role_weight),
+        amount,
+        payout_schedule: "monthly",
+      });
     });
-    investmentPaidOut += dhInvest;
-  } else if (ben.districtHead) {
-    const dhInvest = round2(perUnit * ben.districtHead.units);
+  } else {
+    // No executives configured yet — hold the exec pool in the HQ pool.
     rows.push({
-      beneficiary_user_id: ben.districtHead.user_id,
-      beneficiary_rep_id: ben.districtHead.rep_id,
-      beneficiary_role: "district_head",
-      distribution_type: "investment_return",
-      units: ben.districtHead.units,
-      rate_or_percentage: perUnit,
-      amount: dhInvest,
-      payout_schedule: "annual",
-    });
-    investmentPaidOut += dhInvest;
-  }
-  // If neither branch applies (no district head yet), record nothing here.
-
-  // --- Divisional-head investment return: fixed 1 unit for effort (annual) ---
-  if (ben.divisionalHeadUserId) {
-    const dvInvest = round2(perUnit * 1);
-    rows.push({
-      beneficiary_user_id: ben.divisionalHeadUserId,
+      beneficiary_user_id: null,
       beneficiary_rep_id: null,
-      beneficiary_role: "divisional_head",
-      distribution_type: "investment_return",
-      units: 1,
-      rate_or_percentage: perUnit,
-      amount: dvInvest,
-      payout_schedule: "annual",
+      beneficiary_role: "hq",
+      distribution_type: "company_fund",
+      units: 0,
+      rate_or_percentage: round4(fin.executive_percentage),
+      amount: execPool,
+      payout_schedule: "monthly",
     });
-    investmentPaidOut += dvInvest;
   }
 
-  // --- HQ investment remainder (annual). Reconciles to the penny. ---
-  const hqRemainder = round2(investmentShare - investmentPaidOut);
+  // --- 4. Supervision incentive (company_fund, monthly) ---
+  // The ~3% supervision pool is shared between the district head and the
+  // divisional head. When one is missing, the present party takes the whole
+  // pool; when both are missing, it falls to the HQ pool.
+  if (supervisionPool > 0) {
+    const districtHeadUserId = ben.dealer.is_district_head
+      ? ben.dealer.user_id
+      : ben.districtHead?.user_id ?? null;
+    const districtHeadRepId = ben.dealer.is_district_head
+      ? ben.dealer.rep_id
+      : ben.districtHead?.rep_id ?? null;
+    const hasDistrict = districtHeadUserId !== null;
+    const hasDivisional = ben.divisionalHeadUserId !== null;
+
+    if (hasDistrict && hasDivisional) {
+      // Split 60/40 between district and divisional head (illustrative), with
+      // the divisional head absorbing the rounding residual.
+      const districtAmt = round2(supervisionPool * 0.6);
+      const divisionalAmt = round2(supervisionPool - districtAmt);
+      rows.push({
+        beneficiary_user_id: districtHeadUserId,
+        beneficiary_rep_id: districtHeadRepId,
+        beneficiary_role: "district_head",
+        distribution_type: "company_fund",
+        units: 0,
+        rate_or_percentage: null,
+        amount: districtAmt,
+        payout_schedule: "monthly",
+      });
+      rows.push({
+        beneficiary_user_id: ben.divisionalHeadUserId,
+        beneficiary_rep_id: null,
+        beneficiary_role: "divisional_head",
+        distribution_type: "company_fund",
+        units: 0,
+        rate_or_percentage: null,
+        amount: divisionalAmt,
+        payout_schedule: "monthly",
+      });
+    } else if (hasDistrict) {
+      rows.push({
+        beneficiary_user_id: districtHeadUserId,
+        beneficiary_rep_id: districtHeadRepId,
+        beneficiary_role: "district_head",
+        distribution_type: "company_fund",
+        units: 0,
+        rate_or_percentage: null,
+        amount: supervisionPool,
+        payout_schedule: "monthly",
+      });
+    } else if (hasDivisional) {
+      rows.push({
+        beneficiary_user_id: ben.divisionalHeadUserId,
+        beneficiary_rep_id: null,
+        beneficiary_role: "divisional_head",
+        distribution_type: "company_fund",
+        units: 0,
+        rate_or_percentage: null,
+        amount: supervisionPool,
+        payout_schedule: "monthly",
+      });
+    } else {
+      // No supervisors resolved — the supervision pool falls to HQ.
+      rows.push({
+        beneficiary_user_id: null,
+        beneficiary_rep_id: null,
+        beneficiary_role: "hq",
+        distribution_type: "company_fund",
+        units: 0,
+        rate_or_percentage: null,
+        amount: supervisionPool,
+        payout_schedule: "monthly",
+      });
+    }
+  }
+
+  // --- 5. Representative Support Fund accrual (company_fund, annual) ---
   rows.push({
     beneficiary_user_id: null,
     beneficiary_rep_id: null,
-    beneficiary_role: "hq",
-    distribution_type: "investment_return",
+    beneficiary_role: "support_fund",
+    distribution_type: "company_fund",
     units: 0,
-    rate_or_percentage: perUnit,
-    amount: hqRemainder,
+    rate_or_percentage: round4(fin.support_fund_sub_percentage),
+    amount: supportFund,
+    payout_schedule: "annual",
+  });
+
+  // --- 6. Future Works Fund accrual (company_fund, annual) ---
+  rows.push({
+    beneficiary_user_id: null,
+    beneficiary_rep_id: null,
+    beneficiary_role: "future_works",
+    distribution_type: "company_fund",
+    units: 0,
+    rate_or_percentage: round4(fin.future_works_percentage),
+    amount: futureWorks,
     payout_schedule: "annual",
   });
 
@@ -217,7 +312,10 @@ export function computeDistribution(
     rep_share_amount: repShare,
     hq_share_amount: hqShare,
     investment_share_amount: investmentShare,
-    investment_return_per_unit: perUnit,
+    executive_amount: execPool,
+    supervision_amount: supervisionPool,
+    support_fund_amount: supportFund,
+    future_works_amount: futureWorks,
     rows,
   };
 }

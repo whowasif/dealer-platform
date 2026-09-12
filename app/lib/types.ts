@@ -463,9 +463,16 @@ export type BeneficiaryRole =
   | "representative"
   | "district_head"
   | "divisional_head"
-  | "hq";
+  | "hq"
+  // v5.0 company-fund beneficiaries:
+  | "hq_executive" // one of the 5-6 HQ executives (executives-profit share)
+  | "support_fund" // Representative Support Fund accrual
+  | "future_works"; // Future Works Fund accrual
 
-export type DistributionType = "profit_share" | "investment_return";
+export type DistributionType =
+  | "profit_share" // rep 20% + HQ salary/admin 40% (monthly)
+  | "company_fund" // the 40% investment slice (exec profit / supervision / funds)
+  | "investment_return"; // DEPRECATED (pre-v5.0); kept for backward compatibility
 
 export type PayoutSchedule = "monthly" | "annual";
 
@@ -483,7 +490,11 @@ export interface ProfitConfigRow {
   created_at: string;
 }
 
-/** A row from investment_pool_config (versioned per-unit amount). */
+/**
+ * A row from investment_pool_config (versioned per-unit amount).
+ * DEPRECATED in v5.0 — the per-unit "investment return" model was removed.
+ * Kept only so any legacy reads still type-check; the v5.0 engine ignores it.
+ */
 export interface InvestmentConfigRow {
   id: string;
   per_unit_amount: string;
@@ -492,6 +503,77 @@ export interface InvestmentConfigRow {
   effective_to: string | null;
   notes: string | null;
   created_at: string;
+}
+
+/**
+ * A row from investment_split_config (v5.0). Defines how the 40% "investment"
+ * slice of NET PROFIT is sub-divided. All percentages are of NET PROFIT, so:
+ *   executive_percentage + supervision_percentage + future_works_percentage
+ *     = investment_percentage (40 by default), and
+ *   supervision_sub_percentage + support_fund_sub_percentage
+ *     = supervision_percentage.
+ * DECIMAL columns come back from node-postgres as strings.
+ */
+export interface InvestmentSplitConfigRow {
+  id: string;
+  executive_percentage: string; // 15
+  supervision_percentage: string; // 5 (supervision incentive + support fund)
+  future_works_percentage: string; // 20
+  supervision_sub_percentage: string; // ~3 (of the 5)
+  support_fund_sub_percentage: string; // ~2 (of the 5)
+  effective_from: string;
+  effective_to: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** An HQ executive (one of the 5-6 who run HQ). role_weight is editable and
+ *  determines their proportional share of the 15% executives-profit bucket. */
+export interface HqExecutiveRow {
+  id: string;
+  user_id: string;
+  designation: string;
+  role_weight: string; // DECIMAL -> string
+  is_ceo: boolean;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** An HQ executive joined with the user's name (for lists). */
+export interface HqExecutiveListItem extends HqExecutiveRow {
+  full_name: string;
+  phone: string;
+  official_email: string | null;
+}
+
+/** Which fund a ledger row belongs to. */
+export type FundType = "representative_support" | "future_works" | "growth";
+
+/** A row from one of the fund ledgers (support / future-works / growth). */
+export interface FundLedgerRow {
+  id: string;
+  transaction_date: string;
+  description: string;
+  credit: string;
+  debit: string;
+  balance: string;
+  reference_type: string | null;
+  reference_id: string | null;
+  representative_id?: string | null; // support fund only
+  created_by: string | null;
+  created_at: string;
+}
+
+/** A fund's current balance + recent activity summary. */
+export interface FundSummary {
+  fund: FundType;
+  balance: number;
+  total_credit: number;
+  total_debit: number;
+  entry_count: number;
 }
 
 /** Inputs for creating a project (financials pre-parsed to numbers). */

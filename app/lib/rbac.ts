@@ -25,9 +25,25 @@ export function hasRole(user: SessionUser, role: RoleName): boolean {
   return user.roles.some((r) => r.role_name === role);
 }
 
-/** True if the user can manage other users (HQ only). */
+/** True if the user is the super admin (level 1). */
+export function isSuperAdmin(user: SessionUser): boolean {
+  return hasRole(user, "super_admin");
+}
+
+/**
+ * True if the user can VIEW the user/representative management lists.
+ * All HQ roles can view. (Mutations are gated separately by isSuperAdmin.)
+ */
 export function canManageUsers(user: SessionUser): boolean {
   return isHQ(user);
+}
+
+/**
+ * True if the user can CREATE / MODIFY / DELETE users and representatives.
+ * Super admin only.
+ */
+export function canMutateUsers(user: SessionUser): boolean {
+  return isSuperAdmin(user);
 }
 
 /** The scope (division/district/upazila) attached to a specific role, if any. */
@@ -60,11 +76,15 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Customers", href: "/customers" },
       { label: "Projects", href: "/projects" },
       { label: "Profit Config", href: "/projects/config" },
+      { label: "HQ Executives", href: "/executives" },
+      { label: "Funds", href: "/funds" },
       { label: "Fees & Payments", href: "/fees" },
       { label: "Documents", href: "/documents" },
       { label: "Reports (National)", href: "/reports" },
       { label: "Disciplinary", href: "/disciplinary" },
       { label: "Complaints", href: "/complaints" },
+      { label: "Notifications", href: "/notifications" },
+      { label: "My Profile", href: "/profile" },
       { label: "Settings", href: "/settings" },
       { label: "Audit", href: "/audit" },
     ];
@@ -116,6 +136,7 @@ export function menuForUser(user: SessionUser): MenuItem[] {
     { label: "Complaints", href: "/complaints" },
     { label: "Notifications", href: "/notifications" },
     { label: "My Profile", href: "/profile" },
+    { label: "Settings", href: "/settings" },
   ];
 }
 
