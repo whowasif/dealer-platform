@@ -31,7 +31,10 @@ export interface PreviewConfig {
   representative_percentage: number;
   hq_percentage: number;
   investment_percentage: number;
-  per_unit_amount: number;
+  // investment sub-split (all % of net profit)
+  executive_percentage: number;
+  supervision_percentage: number;
+  future_works_percentage: number;
 }
 
 const initialState: ActionState = {};
@@ -111,16 +114,13 @@ export function NewProjectForm({
   const cost = Number(totalCost) || 0;
   const netProfit = Math.round((val - vat - cost) * 100) / 100;
 
-  const repShare =
-    Math.round(((netProfit * config.representative_percentage) / 100) * 100) / 100;
-  const hqShare =
-    Math.round(((netProfit * config.hq_percentage) / 100) * 100) / 100;
-  const investShare =
-    Math.round(((netProfit * config.investment_percentage) / 100) * 100) / 100;
-  const perUnit =
-    cost > 0
-      ? Math.round((investShare / cost) * config.per_unit_amount * 10000) / 10000
-      : 0;
+  const pct = (p: number) => Math.round(((netProfit * p) / 100) * 100) / 100;
+  const repShare = pct(config.representative_percentage);
+  const hqShare = pct(config.hq_percentage);
+  const investShare = pct(config.investment_percentage);
+  const execShare = pct(config.executive_percentage);
+  const supervisionShare = pct(config.supervision_percentage);
+  const futureShare = pct(config.future_works_percentage);
 
   const netNegative = val > 0 && netProfit < 0;
 
@@ -316,15 +316,24 @@ export function NewProjectForm({
             value={`৳${fmt(hqShare)}`}
           />
           <PreviewStat
-            label={`Investment pool (${config.investment_percentage}%)`}
+            label={`Investment / company fund (${config.investment_percentage}%)`}
             value={`৳${fmt(investShare)}`}
           />
         </div>
-        <p className="mt-4 text-sm text-slate-600">
-          Investment return per unit (per ৳
-          {config.per_unit_amount.toLocaleString("en-BD")}):{" "}
-          <span className="font-semibold text-slate-900">৳{fmt(perUnit, 4)}</span>
-        </p>
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <PreviewStat
+            label={`— Executives (${config.executive_percentage}%)`}
+            value={`৳${fmt(execShare)}`}
+          />
+          <PreviewStat
+            label={`— Supervision + support (${config.supervision_percentage}%)`}
+            value={`৳${fmt(supervisionShare)}`}
+          />
+          <PreviewStat
+            label={`— Future works (${config.future_works_percentage}%)`}
+            value={`৳${fmt(futureShare)}`}
+          />
+        </div>
         {netNegative ? (
           <p className="mt-2 text-sm font-medium text-red-700">
             Net profit is negative — VAT/tax plus total cost exceed the project

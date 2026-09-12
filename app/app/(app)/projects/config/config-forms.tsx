@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
 import {
   createProfitConfigAction,
-  createInvestmentConfigAction,
+  createInvestmentSplitConfigAction,
   type ActionState,
 } from "../actions";
 
@@ -145,16 +145,39 @@ export function ProfitConfigForm({
   );
 }
 
-export function InvestmentConfigForm({
-  currentPerUnit,
+export function InvestmentSplitConfigForm({
+  current,
+  investmentPct,
 }: {
-  currentPerUnit: number;
+  current: {
+    exec: number;
+    supervision: number;
+    future: number;
+    supervisionSub: number;
+    supportSub: number;
+  };
+  investmentPct: number;
 }) {
   const [state, formAction] = useFormState(
-    createInvestmentConfigAction,
+    createInvestmentSplitConfigAction,
     initialState
   );
   const router = useRouter();
+
+  const [exec, setExec] = useState(String(current.exec));
+  const [supervision, setSupervision] = useState(String(current.supervision));
+  const [future, setFuture] = useState(String(current.future));
+  const [supervisionSub, setSupervisionSub] = useState(
+    String(current.supervisionSub)
+  );
+  const [supportSub, setSupportSub] = useState(String(current.supportSub));
+
+  const topSum =
+    (Number(exec) || 0) + (Number(supervision) || 0) + (Number(future) || 0);
+  const topOk = Math.round(topSum * 100) / 100 === Math.round(investmentPct * 100) / 100;
+  const subSum = (Number(supervisionSub) || 0) + (Number(supportSub) || 0);
+  const subOk =
+    Math.round(subSum * 100) / 100 === Math.round((Number(supervision) || 0) * 100) / 100;
 
   return (
     <form
@@ -164,34 +187,105 @@ export function InvestmentConfigForm({
       }}
       className="space-y-4"
     >
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <p className="text-xs text-slate-500">
+        All values are a percentage of NET PROFIT. The three top-level buckets
+        must sum to the investment share ({investmentPct}%). The supervision
+        bucket splits into a supervision incentive and the support fund.
+      </p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <label className="block">
           <span className="mb-1 block text-sm font-medium text-slate-700">
-            Per-unit amount (৳)
+            Executives profit %
           </span>
           <input
-            name="per_unit_amount"
+            name="executive_percentage"
             type="number"
-            min="1"
+            min="0"
+            max="100"
             step="0.01"
-            defaultValue={String(currentPerUnit)}
+            value={exec}
+            onChange={(e) => setExec(e.target.value)}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
         </label>
         <label className="block">
           <span className="mb-1 block text-sm font-medium text-slate-700">
-            Total working capital (৳){" "}
-            <span className="font-normal text-slate-400">(optional)</span>
+            Supervision + support %
           </span>
           <input
-            name="total_working_capital"
+            name="supervision_percentage"
             type="number"
             min="0"
+            max="100"
             step="0.01"
+            value={supervision}
+            onChange={(e) => setSupervision(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-slate-700">
+            Future works fund %
+          </span>
+          <input
+            name="future_works_percentage"
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            value={future}
+            onChange={(e) => setFuture(e.target.value)}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
         </label>
       </div>
+
+      <p
+        className={`text-sm font-medium ${topOk ? "text-green-700" : "text-red-700"}`}
+      >
+        Top-level total: {topSum}%{" "}
+        {topOk ? "✓" : `(must equal ${investmentPct}%)`}
+      </p>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-slate-700">
+            — of which: supervision incentive %
+          </span>
+          <input
+            name="supervision_sub_percentage"
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            value={supervisionSub}
+            onChange={(e) => setSupervisionSub(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-slate-700">
+            — of which: support fund %
+          </span>
+          <input
+            name="support_fund_sub_percentage"
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            value={supportSub}
+            onChange={(e) => setSupportSub(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        </label>
+      </div>
+
+      <p
+        className={`text-sm font-medium ${subOk ? "text-green-700" : "text-red-700"}`}
+      >
+        Supervision sub-total: {subSum}%{" "}
+        {subOk ? "✓" : `(must equal ${Number(supervision) || 0}%)`}
+      </p>
 
       <label className="block max-w-xs">
         <span className="mb-1 block text-sm font-medium text-slate-700">
@@ -225,7 +319,7 @@ export function InvestmentConfigForm({
         <p className="text-sm text-green-700">{state.success}</p>
       ) : null}
 
-      <SaveButton label="Save per-unit amount" />
+      <SaveButton label="Save investment split" />
     </form>
   );
 }

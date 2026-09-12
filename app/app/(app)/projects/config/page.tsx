@@ -4,19 +4,16 @@ import { getSessionUser } from "@/lib/session";
 import { isHQ } from "@/lib/rbac";
 import {
   getActiveProfitConfig,
-  getActiveInvestmentConfig,
   listProfitConfigHistory,
-  listInvestmentConfigHistory,
 } from "@/lib/profit-config";
-import { ProfitConfigForm, InvestmentConfigForm } from "./config-forms";
+import {
+  getActiveInvestmentSplitConfig,
+  listInvestmentSplitConfigHistory,
+} from "@/lib/investment-split-config";
+import { ProfitConfigForm, InvestmentSplitConfigForm } from "./config-forms";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Profit & investment config — Dealer Network" };
-
-function money(v: string | number | null): string {
-  const n = Number(v ?? 0);
-  return "৳" + n.toLocaleString("en-BD", { maximumFractionDigits: 2 });
-}
 
 function fmtDate(v: string | null): string {
   if (!v) return "—";
@@ -32,12 +29,12 @@ export default async function ProfitConfigPage() {
   if (!user) redirect("/login");
   if (!isHQ(user)) redirect("/projects");
 
-  const [activeProfit, activeInvest, profitHistory, investHistory] =
+  const [activeProfit, activeSplit, profitHistory, splitHistory] =
     await Promise.all([
       getActiveProfitConfig(),
-      getActiveInvestmentConfig(),
+      getActiveInvestmentSplitConfig(),
       listProfitConfigHistory(),
-      listInvestmentConfigHistory(),
+      listInvestmentSplitConfigHistory(),
     ]);
 
   const current = {
@@ -45,7 +42,13 @@ export default async function ProfitConfigPage() {
     hq: Number(activeProfit?.hq_percentage ?? 40),
     invest: Number(activeProfit?.investment_percentage ?? 40),
   };
-  const currentPerUnit = Number(activeInvest?.per_unit_amount ?? 100000);
+  const currentSplit = {
+    exec: Number(activeSplit?.executive_percentage ?? 15),
+    supervision: Number(activeSplit?.supervision_percentage ?? 5),
+    future: Number(activeSplit?.future_works_percentage ?? 20),
+    supervisionSub: Number(activeSplit?.supervision_sub_percentage ?? 3),
+    supportSub: Number(activeSplit?.support_fund_sub_percentage ?? 2),
+  };
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -83,14 +86,15 @@ export default async function ProfitConfigPage() {
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Current per-unit amount
+            Investment split (of the {current.invest}%)
           </h2>
           <p className="text-2xl font-bold text-slate-900">
-            {money(currentPerUnit)}
+            {currentSplit.exec}% / {currentSplit.supervision}% /{" "}
+            {currentSplit.future}%
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Per investment unit · effective{" "}
-            {fmtDate(activeInvest?.effective_from ?? null)}
+            Executives / Supervision+Support / Future works · effective{" "}
+            {fmtDate(activeSplit?.effective_from ?? null)}
           </p>
         </div>
       </section>
@@ -150,34 +154,49 @@ export default async function ProfitConfigPage() {
         </div>
       </section>
 
-      {/* Investment pool form */}
+      {/* Investment split form */}
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
-          New per-unit amount
+          New investment split
         </h2>
-        <InvestmentConfigForm currentPerUnit={currentPerUnit} />
+        <InvestmentSplitConfigForm
+          current={currentSplit}
+          investmentPct={current.invest}
+        />
       </section>
 
-      {/* Investment history */}
+      {/* Investment split history */}
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Per-unit amount history
+          Investment split history
         </h2>
         <div className="overflow-hidden rounded-lg border border-slate-200">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="px-3 py-2 font-medium">Per-unit amount</th>
+                <th className="px-3 py-2 font-medium">Exec %</th>
+                <th className="px-3 py-2 font-medium">Superv.+Support %</th>
+                <th className="px-3 py-2 font-medium">Future %</th>
+                <th className="px-3 py-2 font-medium">(superv./support)</th>
                 <th className="px-3 py-2 font-medium">Effective from</th>
                 <th className="px-3 py-2 font-medium">Effective to</th>
-                <th className="px-3 py-2 font-medium">Notes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {investHistory.map((c) => (
+              {splitHistory.map((c) => (
                 <tr key={c.id}>
-                  <td className="px-3 py-2 font-medium text-slate-800">
-                    {money(c.per_unit_amount)}
+                  <td className="px-3 py-2 text-slate-700">
+                    {Number(c.executive_percentage)}
+                  </td>
+                  <td className="px-3 py-2 text-slate-700">
+                    {Number(c.supervision_percentage)}
+                  </td>
+                  <td className="px-3 py-2 text-slate-700">
+                    {Number(c.future_works_percentage)}
+                  </td>
+                  <td className="px-3 py-2 text-slate-500">
+                    {Number(c.supervision_sub_percentage)} /{" "}
+                    {Number(c.support_fund_sub_percentage)}
                   </td>
                   <td className="px-3 py-2 text-slate-600">
                     {fmtDate(c.effective_from)}
@@ -191,7 +210,6 @@ export default async function ProfitConfigPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-slate-500">{c.notes ?? "—"}</td>
                 </tr>
               ))}
             </tbody>

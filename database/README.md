@@ -14,9 +14,12 @@ SQL files for the Dealer Network Management System, targeting **plain PostgreSQL
 
 | File | Purpose |
 |------|---------|
-| `01_schema.sql` | All enum types, tables (34 tables), indexes, and foreign keys, in dependency order. |
+| `01_schema.sql` | All enum types, tables, indexes, and foreign keys, in dependency order. |
 | `02_seed_geography.sql` | Bangladesh geography: 8 divisions, 64 districts, 497 upazilas, with `is_sadar` flags. |
 | `03_seed_config.sql` | Default config: roles, packages, profit/investment config, document categories. |
+| `05_inquiry_web.sql` | Public marketing-site inquiry intake table. |
+| `06_dual_approval.sql` | Migration: two-stage (divisional + HQ) approval trail on orders and projects. |
+| `07_v5_company_fund.sql` | Migration: v5.0 company-fund model — `investment_split_config` (15/5/20), `hq_executives` (editable role weights), and the support / future-works / growth fund ledgers. New `beneficiary_role`/`distribution_type` enum values. |
 | `README.md` | This guide. |
 
 ## Run order (important)
@@ -26,6 +29,9 @@ Run the files **strictly in this order**. Each one depends on the previous.
 1. `01_schema.sql`  — creates the structure.
 2. `02_seed_geography.sql` — depends on the geography tables from step 1.
 3. `03_seed_config.sql` — depends on the tables from step 1.
+4. `05_inquiry_web.sql` — adds the public inquiry table (additive; safe to re-run).
+5. `06_dual_approval.sql` — adds dual-approval columns (additive; safe to re-run).
+6. `07_v5_company_fund.sql` — adds the v5.0 company-fund tables and enum values (additive; safe to re-run).
 
 ## How to run in pgAdmin
 

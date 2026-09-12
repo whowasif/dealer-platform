@@ -7,9 +7,11 @@ import {
   canViewProject,
   listDistributionsForProject,
   resolveBeneficiaries,
+  computeDistribution,
 } from "@/lib/projects";
-import { getActiveProfitConfig, getActiveInvestmentConfig } from "@/lib/profit-config";
-import type { DistributionRow } from "@/lib/types";
+import { getActiveProfitConfig } from "@/lib/profit-config";
+import { getActiveInvestmentSplitConfig } from "@/lib/investment-split-config";
+import type { BeneficiaryRole, DistributionRow } from "@/lib/types";
 import {
   ProjectStatusBadge,
   RoleBadge,
@@ -17,23 +19,14 @@ import {
 } from "../status-badge";
 import { DistributeControls } from "./distribute-controls";
 import { DocumentsSection } from "@/components/documents-section";
+import { getApproval, approvalStatus } from "@/lib/approvals";
+import { ApprovalPanel } from "@/components/approval-panel";
 
 export const dynamic = "force-dynamic";
 
 function money(v: string | number | null): string {
   const n = Number(v ?? 0);
   return "৳" + n.toLocaleString("en-BD", { maximumFractionDigits: 2 });
-}
-
-function money4(v: string | number | null): string {
-  const n = Number(v ?? 0);
-  return (
-    "৳" +
-    n.toLocaleString("en-BD", {
-      minimumFractionDigits: 4,
-      maximumFractionDigits: 4,
-    })
-  );
 }
 
 function fmtDate(v: string | null): string {
@@ -61,49 +54,52 @@ export default async function ProjectDetailPage({
   const distributed = project.status === "profit_distributed";
   const cancelled = project.status === "cancelled";
 
-  const [distributions, beneficiaries, profitCfg, investCfg] = await Promise.all([
+  // Dual approval applies while the project is still a draft (rep-created).
+  const needsDualApproval = project.status === "draft";
+  const approvalRow = needsDualApproval
+    ? await getApproval("project", project.id)
+    : null;
+  const approval = approvalRow ? approvalStatus(user, approvalRow) : null;
+
+  const [distributions, beneficiaries, profitCfg, splitCfg] = await Promise.all([
     listDistributionsForProject(project.id),
     distributed ? Promise.resolve(null) : resolveBeneficiaries(project),
     getActiveProfitConfig(),
-    getActiveInvestmentConfig(),
+    getActiveInvestmentSplitConfig(),
   ]);
 
-  // Preview split numbers (before distribution) use the active config; after
-  // distribution we read the snapshot stored on the project row.
-  const repPct = distributed
-    ? null
-    : Number(profitCfg?.representative_percentage ?? 20);
-  const hqPct = distributed ? null : Number(profitCfg?.hq_percentage ?? 40);
-  const investPct = distributed
-    ? null
-    : Number(profitCfg?.investment_percentage ?? 40);
-  const perUnitCfg = Number(investCfg?.per_unit_amount ?? 100000);
-
   const netProfit = Number(project.net_profit);
-  const previewRep = distributed
-    ? Number(project.rep_share_amount)
-    : Math.round(((netProfit * (repPct ?? 0)) / 100) * 100) / 100;
-  const previewHq = distributed
-    ? Number(project.hq_share_amount)
-    : Math.round(((netProfit * (hqPct ?? 0)) / 100) * 100) / 100;
-  const previewInvest = distributed
-    ? Number(project.investment_share_amount)
-    : Math.round(((netProfit * (investPct ?? 0)) / 100) * 100) / 100;
-  const totalCost = Number(project.total_cost);
-  const previewPerUnit = distributed
-    ? Number(project.investment_return_per_unit)
-    : totalCost > 0
-      ? Math.round((previewInvest / totalCost) * perUnitCfg * 10000) / 10000
-      : 0;
-
   const dealerIsDistrictHead =
     project.rep_is_district_head === true || project.upazila_is_sadar === true;
 
+  // Preview (before distribution): run the PURE engine with the active config
+  // and resolved beneficiaries. Nothing is written; this mirrors exactly what
+  // distribution will produce.
+  const preview =
+    !distributed && !cancelled && beneficiaries && profitCfg && splitCfg
+      ? computeDistribution(
+          {
+            net_profit: netProfit,
+            representative_percentage: Number(profitCfg.representative_percentage),
+            hq_percentage: Number(profitCfg.hq_percentage),
+            investment_percentage: Number(profitCfg.investment_percentage),
+            executive_percentage: Number(splitCfg.executive_percentage),
+            supervision_percentage: Number(splitCfg.supervision_percentage),
+            future_works_percentage: Number(splitCfg.future_works_percentage),
+            supervision_sub_percentage: Number(splitCfg.supervision_sub_percentage),
+            support_fund_sub_percentage: Number(splitCfg.support_fund_sub_percentage),
+          },
+          beneficiaries
+        )
+      : null;
+
+  // Actual distributions (after distribution): profit share vs company fund.
+  // Legacy 'investment_return' rows (pre-v5.0 projects) group with company fund.
   const profitRows = distributions.filter(
     (d) => d.distribution_type === "profit_share"
   );
-  const investRows = distributions.filter(
-    (d) => d.distribution_type === "investment_return"
+  const companyFundRows = distributions.filter(
+    (d) => d.distribution_type !== "profit_share"
   );
 
   return (
@@ -129,6 +125,17 @@ export default async function ProjectDetailPage({
           ← Back
         </Link>
       </div>
+
+      {/* Dual approval (divisional head + HQ) for draft projects */}
+      {needsDualApproval && approval ? (
+        <ApprovalPanel
+          kind="project"
+          id={project.id}
+          divisionApproved={approval.divisionApproved}
+          hqApproved={approval.hqApproved}
+          canApprove={approval.canApprove}
+        />
+      ) : null}
 
       {project.description ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -173,49 +180,88 @@ export default async function ProjectDetailPage({
           </h2>
           <dl className="space-y-2 text-sm">
             <Row
-              label={`Representative${repPct != null ? ` (${repPct}%)` : ""}`}
-              value={money(previewRep)}
+              label="Representative (20%)"
+              value={money(
+                distributed
+                  ? Number(project.rep_share_amount)
+                  : (preview?.rep_share_amount ?? 0)
+              )}
             />
             <Row
-              label={`HQ${hqPct != null ? ` (${hqPct}%)` : ""}`}
-              value={money(previewHq)}
+              label="HQ — salary & admin (40%)"
+              value={money(
+                distributed
+                  ? Number(project.hq_share_amount)
+                  : (preview?.hq_share_amount ?? 0)
+              )}
             />
             <Row
-              label={`Investment pool${investPct != null ? ` (${investPct}%)` : ""}`}
-              value={money(previewInvest)}
+              label="Investment / company fund (40%)"
+              value={money(
+                distributed
+                  ? Number(project.investment_share_amount)
+                  : (preview?.investment_share_amount ?? 0)
+              )}
             />
-            <div className="flex justify-between border-t border-slate-200 pt-2">
-              <dt className="text-slate-500">Investment return / unit</dt>
-              <dd className="text-right font-semibold text-slate-800">
-                {money4(previewPerUnit)}
-              </dd>
-            </div>
+            {preview ? (
+              <>
+                <div className="flex justify-between border-t border-slate-200 pt-2 text-xs text-slate-500">
+                  <dt>— Executives profit ({Number(splitCfg?.executive_percentage)}%)</dt>
+                  <dd className="font-medium text-slate-700">
+                    {money(preview.executive_amount)}
+                  </dd>
+                </div>
+                <div className="flex justify-between text-xs text-slate-500">
+                  <dt>— Supervision incentive ({Number(splitCfg?.supervision_sub_percentage)}%)</dt>
+                  <dd className="font-medium text-slate-700">
+                    {money(preview.supervision_amount)}
+                  </dd>
+                </div>
+                <div className="flex justify-between text-xs text-slate-500">
+                  <dt>— Support fund ({Number(splitCfg?.support_fund_sub_percentage)}%)</dt>
+                  <dd className="font-medium text-slate-700">
+                    {money(preview.support_fund_amount)}
+                  </dd>
+                </div>
+                <div className="flex justify-between text-xs text-slate-500">
+                  <dt>— Future works fund ({Number(splitCfg?.future_works_percentage)}%)</dt>
+                  <dd className="font-medium text-slate-700">
+                    {money(preview.future_works_amount)}
+                  </dd>
+                </div>
+              </>
+            ) : null}
           </dl>
           <p className="mt-3 text-xs text-slate-500">
-            Per unit = investment pool ÷ total cost × ৳
-            {perUnitCfg.toLocaleString("en-BD")} (per-unit amount).
+            The 40% investment slice is a company fund: executives&apos; profit
+            (shared by role weight), supervision incentive, the Representative
+            Support Fund, and the Future Works Fund.
           </p>
         </div>
       </section>
 
       {/* Special-case note */}
-      {dealerIsDistrictHead ? (
+      {dealerIsDistrictHead && !distributed ? (
         <section className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-800">
           <span className="font-semibold">Special case:</span> this project is in
           a sadar upazila, so the main dealer is also the district head. They
-          receive TWO investment-return portions — one as the representative and
-          one as the district head — each scaled by their own investment units.
+          receive the representative&apos;s 20% profit share AND, from the
+          supervision incentive (part of the 5% company-fund bucket), the
+          district-head share.
         </section>
       ) : null}
 
       {/* Beneficiary preview (before distribution) */}
-      {!distributed && !cancelled && beneficiaries ? (
+      {preview ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-500">
             Who will receive what (preview)
           </h2>
           <p className="mb-4 text-xs text-slate-500">
-            Projected using the currently effective config. Nothing is recorded
+            Projected using the currently effective config (20/40/40; investment
+            split {Number(splitCfg?.executive_percentage)}/
+            {Number(splitCfg?.supervision_percentage)}/
+            {Number(splitCfg?.future_works_percentage)}). Nothing is recorded
             until HQ distributes the profit.
           </p>
           <div className="overflow-hidden rounded-lg border border-slate-200">
@@ -225,94 +271,37 @@ export default async function ProjectDetailPage({
                   <th className="px-3 py-2 font-medium">Beneficiary</th>
                   <th className="px-3 py-2 font-medium">Role</th>
                   <th className="px-3 py-2 font-medium">Type</th>
-                  <th className="px-3 py-2 font-medium">Units</th>
                   <th className="px-3 py-2 font-medium">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                <PreviewRow
-                  name={project.representative_name}
-                  role="representative"
-                  type="Profit share"
-                  units="—"
-                  amount={money(previewRep)}
-                />
-                <PreviewRow
-                  name="HQ (company)"
-                  role="hq"
-                  type="Profit share"
-                  units="—"
-                  amount={money(previewHq)}
-                />
-                <PreviewRow
-                  name={project.representative_name}
-                  role="representative"
-                  type="Investment return"
-                  units={Number(project.rep_investment_units).toString()}
-                  amount={money(
-                    Math.round(
-                      previewPerUnit * Number(project.rep_investment_units) * 100
-                    ) / 100
-                  )}
-                />
-                {dealerIsDistrictHead ? (
+                {preview.rows.map((r, i) => (
                   <PreviewRow
-                    name={`${project.representative_name} (as district head)`}
-                    role="district_head"
-                    type="Investment return"
-                    units={Number(project.rep_investment_units).toString()}
-                    amount={money(
-                      Math.round(
-                        previewPerUnit * Number(project.rep_investment_units) * 100
-                      ) / 100
+                    key={i}
+                    name={previewName(
+                      r.beneficiary_role,
+                      r.beneficiary_user_id,
+                      project.representative_name,
+                      beneficiaries
                     )}
+                    role={r.beneficiary_role}
+                    type={
+                      r.distribution_type === "profit_share"
+                        ? "Profit share"
+                        : "Company fund"
+                    }
+                    amount={money(r.amount)}
                   />
-                ) : beneficiaries.districtHead ? (
-                  <PreviewRow
-                    name="District head (sadar rep)"
-                    role="district_head"
-                    type="Investment return"
-                    units={beneficiaries.districtHead.units.toString()}
-                    amount={money(
-                      Math.round(
-                        previewPerUnit * beneficiaries.districtHead.units * 100
-                      ) / 100
-                    )}
-                  />
-                ) : (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-2 text-xs text-slate-400">
-                      No district head representative in this district yet — that
-                      portion stays with HQ.
-                    </td>
-                  </tr>
-                )}
-                {beneficiaries.divisionalHeadUserId ? (
-                  <PreviewRow
-                    name="Divisional head (HQ-appointed)"
-                    role="divisional_head"
-                    type="Investment return"
-                    units="1 (effort)"
-                    amount={money(Math.round(previewPerUnit * 1 * 100) / 100)}
-                  />
-                ) : (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-2 text-xs text-slate-400">
-                      No divisional head appointed for this division yet — that
-                      portion stays with HQ.
-                    </td>
-                  </tr>
-                )}
-                <PreviewRow
-                  name="HQ (investment remainder)"
-                  role="hq"
-                  type="Investment return"
-                  units="—"
-                  amount="balance"
-                />
+                ))}
               </tbody>
             </table>
           </div>
+          {beneficiaries && beneficiaries.executives.length === 0 ? (
+            <p className="mt-3 text-xs text-amber-600">
+              No HQ executives configured yet — the 15% executives-profit stays
+              with the HQ pool until executives are added in Settings.
+            </p>
+          ) : null}
         </section>
       ) : null}
 
@@ -320,13 +309,13 @@ export default async function ProjectDetailPage({
       {distributed ? (
         <>
           <DistributionTable
-            title="Profit share (paid monthly)"
+            title="Profit share — representative 20% + HQ 40% (monthly)"
             rows={profitRows}
             money={money}
           />
           <DistributionTable
-            title="Investment return (paid annually)"
-            rows={investRows}
+            title="Company fund — 40% investment (executives / supervision / funds)"
+            rows={companyFundRows}
             money={money}
           />
         </>
@@ -372,13 +361,11 @@ function PreviewRow({
   name,
   role,
   type,
-  units,
   amount,
 }: {
   name: string;
-  role: "representative" | "district_head" | "divisional_head" | "hq";
+  role: BeneficiaryRole;
   type: string;
-  units: string;
   amount: string;
 }) {
   return (
@@ -388,10 +375,37 @@ function PreviewRow({
         <RoleBadge role={role} />
       </td>
       <td className="px-3 py-2 text-slate-600">{type}</td>
-      <td className="px-3 py-2 text-slate-600">{units}</td>
       <td className="px-3 py-2 font-medium text-slate-800">{amount}</td>
     </tr>
   );
+}
+
+/** Friendly beneficiary label for a preview row. */
+function previewName(
+  role: BeneficiaryRole,
+  userId: string | null,
+  repName: string,
+  beneficiaries: Awaited<ReturnType<typeof resolveBeneficiaries>> | null
+): string {
+  switch (role) {
+    case "representative":
+      return repName;
+    case "district_head":
+      return beneficiaries && beneficiaries.dealer.is_district_head
+        ? `${repName} (as district head)`
+        : "District head (sadar rep)";
+    case "divisional_head":
+      return "Divisional head (HQ-appointed)";
+    case "hq_executive":
+      return "HQ executive";
+    case "support_fund":
+      return "Representative Support Fund";
+    case "future_works":
+      return "Future Works Fund";
+    case "hq":
+    default:
+      return "HQ (company)";
+  }
 }
 
 function DistributionTable({
@@ -416,7 +430,6 @@ function DistributionTable({
             <tr>
               <th className="px-3 py-2 font-medium">Beneficiary</th>
               <th className="px-3 py-2 font-medium">Role</th>
-              <th className="px-3 py-2 font-medium">Units</th>
               <th className="px-3 py-2 font-medium">Rate</th>
               <th className="px-3 py-2 font-medium">Amount</th>
               <th className="px-3 py-2 font-medium">Period</th>
@@ -426,7 +439,7 @@ function DistributionTable({
           <tbody className="divide-y divide-slate-100">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-slate-400">
+                <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
                   No rows.
                 </td>
               </tr>
@@ -440,12 +453,11 @@ function DistributionTable({
                     <RoleBadge role={r.beneficiary_role} />
                   </td>
                   <td className="px-3 py-2 text-slate-600">
-                    {Number(r.units) === 0 ? "—" : Number(r.units)}
-                  </td>
-                  <td className="px-3 py-2 text-slate-600">
-                    {r.distribution_type === "profit_share"
-                      ? `${Number(r.rate_or_percentage)}%`
-                      : money(r.rate_or_percentage)}
+                    {r.rate_or_percentage == null
+                      ? "—"
+                      : r.beneficiary_role === "hq_executive"
+                        ? `weight ${Number(r.rate_or_percentage)}`
+                        : `${Number(r.rate_or_percentage)}%`}
                   </td>
                   <td className="px-3 py-2 font-medium text-slate-800">
                     {money(r.amount)}

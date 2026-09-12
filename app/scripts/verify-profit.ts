@@ -1,6 +1,6 @@
 /**
- * Verification harness for the PURE profit/investment distribution engine
- * (lib/profit-engine.ts). Exercises the worked example and the special case and
+ * Verification harness for the PURE profit / company-fund distribution engine
+ * (lib/profit-engine.ts, v5.0). Exercises the worked example and edge cases and
  * asserts every number matches the specification exactly.
  *
  * Run with:  npm run verify:profit
@@ -13,6 +13,7 @@ import {
   computeDistribution,
   type DistributionBeneficiaries,
   type DistributionFinancials,
+  type ComputedResult,
 } from "../lib/profit-engine.ts";
 
 let failures = 0;
@@ -26,219 +27,196 @@ function assertEq(label: string, actual: number, expected: number): void {
   );
 }
 
-function assertClose(
-  label: string,
-  actual: number,
-  expected: number,
-  tol = 1e-9
-): void {
-  const ok = Math.abs(actual - expected) <= tol;
-  if (!ok) failures++;
-  console.log(
-    `  ${ok ? "PASS" : "FAIL"}  ${label}: got ${actual}` +
-      (ok ? "" : `  (expected ~${expected})`)
+function rowsBy(result: ComputedResult, role: string, type?: string) {
+  return result.rows.filter(
+    (r) =>
+      r.beneficiary_role === role &&
+      (type === undefined || r.distribution_type === type)
   );
 }
 
-function findRow(
-  result: ReturnType<typeof computeDistribution>,
-  role: string,
-  type: string
-) {
-  return result.rows.filter(
-    (r) => r.beneficiary_role === role && r.distribution_type === type
-  );
+function sum2(...vals: number[]): number {
+  return Math.round((vals.reduce((a, b) => a + b, 0) + Number.EPSILON) * 100) / 100;
 }
 
 // ---------------------------------------------------------------------------
-// The active config from the seed: 20 / 40 / 40, per-unit 100000.
+// Active config from the v5.0 seed: 20 / 40 / 40; investment split 15 / 5 / 20,
+// with 3 / 2 inside the 5. All percentages are of NET PROFIT.
 // ---------------------------------------------------------------------------
 const CONFIG = {
   representative_percentage: 20,
   hq_percentage: 40,
   investment_percentage: 40,
-  per_unit_amount: 100000,
+  executive_percentage: 15,
+  supervision_percentage: 5,
+  future_works_percentage: 20,
+  supervision_sub_percentage: 3,
+  support_fund_sub_percentage: 2,
 };
 
-// Worked-example financials.
-const FINANCIALS: Omit<
-  DistributionFinancials,
-  keyof typeof CONFIG
-> & typeof CONFIG = {
+// Worked-example financials: net profit = 300000.
+const FINANCIALS: DistributionFinancials = {
   net_profit: 3000000 - 450000 - 2250000, // 300000
-  total_cost: 2250000,
   ...CONFIG,
 };
 
 // ===========================================================================
-console.log("\n=== CASE 1: Worked example (non-sadar dealer, 1 unit) ===");
-// dealer non-sadar 1 unit, district head 1 unit, divisional head present.
+console.log("\n=== CASE 1: Worked example (non-sadar dealer) ===");
+// Two executives (weights 3 and 1 -> 75% / 25% of the 45000 exec pool).
 const ben1: DistributionBeneficiaries = {
-  dealer: {
-    rep_id: "rep-dealer",
-    user_id: "user-dealer",
-    units: 1,
-    is_district_head: false,
-  },
-  districtHead: { rep_id: "rep-dh", user_id: "user-dh", units: 1 },
+  dealer: { rep_id: "rep-dealer", user_id: "user-dealer", is_district_head: false },
+  districtHead: { rep_id: "rep-dh", user_id: "user-dh" },
   divisionalHeadUserId: "user-div",
+  executives: [
+    { user_id: "user-exec-a", role_weight: 3 },
+    { user_id: "user-exec-b", role_weight: 1 },
+  ],
 };
 
 const r1 = computeDistribution(FINANCIALS, ben1);
-
 console.log(
-  `  net=${r1.net_profit} rep=${r1.rep_share_amount} hq=${r1.hq_share_amount} inv=${r1.investment_share_amount} perUnit=${r1.investment_return_per_unit}`
+  `  net=${r1.net_profit} rep=${r1.rep_share_amount} hq=${r1.hq_share_amount} inv=${r1.investment_share_amount}`
+);
+console.log(
+  `  exec=${r1.executive_amount} supervision=${r1.supervision_amount} support=${r1.support_fund_amount} future=${r1.future_works_amount}`
 );
 
 assertEq("net_profit", r1.net_profit, 300000);
-assertEq("rep_share_amount", r1.rep_share_amount, 60000);
-assertEq("hq_share_amount", r1.hq_share_amount, 120000);
-assertEq("investment_share_amount", r1.investment_share_amount, 120000);
-assertClose(
-  "investment_return_per_unit",
-  r1.investment_return_per_unit,
-  5333.3333,
-  1e-4
+assertEq("rep_share_amount (20%)", r1.rep_share_amount, 60000);
+assertEq("hq_share_amount (40%)", r1.hq_share_amount, 120000);
+assertEq("investment_share_amount (40%)", r1.investment_share_amount, 120000);
+assertEq("executive_amount (15%)", r1.executive_amount, 45000);
+assertEq("supervision_amount (3%)", r1.supervision_amount, 9000);
+assertEq("support_fund_amount (2%)", r1.support_fund_amount, 6000);
+assertEq("future_works_amount (20%)", r1.future_works_amount, 60000);
+
+// Profit shares.
+assertEq("rep profit_share", rowsBy(r1, "representative", "profit_share")[0]!.amount, 60000);
+assertEq("hq profit_share", rowsBy(r1, "hq", "profit_share")[0]!.amount, 120000);
+
+// Executives: 45000 split 3:1 => 33750 / 11250.
+const execRows1 = rowsBy(r1, "hq_executive", "company_fund");
+assertEq("two executive rows", execRows1.length, 2);
+assertEq("exec A (weight 3)", execRows1[0]!.amount, 33750);
+assertEq("exec B (weight 1, absorbs residual)", execRows1[1]!.amount, 11250);
+assertEq("executives reconcile to pool", sum2(execRows1[0]!.amount, execRows1[1]!.amount), 45000);
+
+// Supervision: 9000 split 60/40 => district 5400, divisional 3600.
+assertEq("district_head supervision", rowsBy(r1, "district_head", "company_fund")[0]!.amount, 5400);
+assertEq("divisional_head supervision", rowsBy(r1, "divisional_head", "company_fund")[0]!.amount, 3600);
+
+// Funds.
+assertEq("support fund row", rowsBy(r1, "support_fund", "company_fund")[0]!.amount, 6000);
+assertEq("future works row", rowsBy(r1, "future_works", "company_fund")[0]!.amount, 60000);
+
+// The whole investment slice reconciles to 120000.
+const invParts1 = sum2(
+  ...execRows1.map((r) => r.amount),
+  rowsBy(r1, "district_head", "company_fund")[0]!.amount,
+  rowsBy(r1, "divisional_head", "company_fund")[0]!.amount,
+  rowsBy(r1, "support_fund", "company_fund")[0]!.amount,
+  rowsBy(r1, "future_works", "company_fund")[0]!.amount
 );
+assertEq("company-fund parts reconcile to investment share", invParts1, 120000);
 
-const dealerInv1 = findRow(r1, "representative", "investment_return");
-const dhInv1 = findRow(r1, "district_head", "investment_return");
-const divInv1 = findRow(r1, "divisional_head", "investment_return");
-const hqInv1 = findRow(r1, "hq", "investment_return");
-const dealerProfit1 = findRow(r1, "representative", "profit_share");
-const hqProfit1 = findRow(r1, "hq", "profit_share");
-
-assertEq("dealer investment_return", dealerInv1[0]!.amount, 5333.33);
-assertEq("district_head investment_return", dhInv1[0]!.amount, 5333.33);
-assertEq("divisional_head investment_return", divInv1[0]!.amount, 5333.33);
-assertEq("dealer profit_share", dealerProfit1[0]!.amount, 60000);
-assertEq("hq profit_share", hqProfit1[0]!.amount, 120000);
-
-// HQ remainder = investment_share - sum(rounded three) = 120000 - 15999.99
-const sumThree1 =
-  dealerInv1[0]!.amount + dhInv1[0]!.amount + divInv1[0]!.amount;
-const expectedRemainder1 =
-  Math.round((120000 - sumThree1 + Number.EPSILON) * 100) / 100;
-assertEq("HQ investment remainder", hqInv1[0]!.amount, expectedRemainder1);
-console.log(`  (sum of three beneficiaries = ${sumThree1})`);
-
-// The four investment amounts MUST sum to exactly 120000.00
-const totalInvestment1 =
-  Math.round(
-    (dealerInv1[0]!.amount +
-      dhInv1[0]!.amount +
-      divInv1[0]!.amount +
-      hqInv1[0]!.amount +
-      Number.EPSILON) *
-      100
-  ) / 100;
-assertEq("investment parts reconcile to share", totalInvestment1, 120000);
+// Whole net profit reconciles across ALL rows.
+const grandTotal1 = sum2(...r1.rows.map((r) => r.amount));
+assertEq("all rows reconcile to net profit", grandTotal1, 300000);
 
 // ===========================================================================
-console.log(
-  "\n=== CASE 2: Special case (dealer IS district head, 1 unit) ==="
-);
+console.log("\n=== CASE 2: Dealer IS district head (sadar) ===");
 const ben2: DistributionBeneficiaries = {
-  dealer: {
-    rep_id: "rep-dealer",
-    user_id: "user-dealer",
-    units: 1,
-    is_district_head: true,
-  },
-  districtHead: null, // ignored when dealer is district head
-  divisionalHeadUserId: "user-div",
-};
-
-const r2 = computeDistribution(FINANCIALS, ben2);
-
-const dealerInv2 = findRow(r2, "representative", "investment_return");
-const dhInv2 = findRow(r2, "district_head", "investment_return");
-const divInv2 = findRow(r2, "divisional_head", "investment_return");
-const hqInv2 = findRow(r2, "hq", "investment_return");
-
-// Same person gets TWO separate investment_return rows: rep + district_head.
-assertEq("dealer has 1 rep investment row", dealerInv2.length, 1);
-assertEq("dealer has 1 district_head investment row", dhInv2.length, 1);
-assertEq(
-  "both rows point to the same user (rep)",
-  dealerInv2[0]!.beneficiary_user_id === dhInv2[0]!.beneficiary_user_id ? 1 : 0,
-  1
-);
-assertEq("dealer(rep) investment_return", dealerInv2[0]!.amount, 5333.33);
-assertEq("dealer(district_head) investment_return", dhInv2[0]!.amount, 5333.33);
-assertEq("divisional_head investment_return", divInv2[0]!.amount, 5333.33);
-
-const totalInvestment2 =
-  Math.round(
-    (dealerInv2[0]!.amount +
-      dhInv2[0]!.amount +
-      divInv2[0]!.amount +
-      hqInv2[0]!.amount +
-      Number.EPSILON) *
-      100
-  ) / 100;
-assertEq("HQ remainder reconciles (special case)", totalInvestment2, 120000);
-console.log(
-  `  dealer(rep)=${dealerInv2[0]!.amount} dealer(dh)=${dhInv2[0]!.amount} div=${divInv2[0]!.amount} hqRemainder=${hqInv2[0]!.amount}`
-);
-
-// ===========================================================================
-console.log("\n=== CASE 3: Premium dealer (5 units) ===");
-const ben3: DistributionBeneficiaries = {
-  dealer: {
-    rep_id: "rep-dealer",
-    user_id: "user-dealer",
-    units: 5,
-    is_district_head: false,
-  },
-  districtHead: { rep_id: "rep-dh", user_id: "user-dh", units: 1 },
-  divisionalHeadUserId: "user-div",
-};
-const r3 = computeDistribution(FINANCIALS, ben3);
-const dealerInv3 = findRow(r3, "representative", "investment_return");
-// 5333.3333 * 5 = 26666.6665 -> 26666.67 (rounded 2dp)
-assertEq("premium dealer (5 units) investment_return", dealerInv3[0]!.amount, 26666.67);
-console.log(`  premium dealer 5 units = ${dealerInv3[0]!.amount}`);
-
-// ===========================================================================
-console.log("\n=== CASE 4: No district head yet ===");
-const ben4: DistributionBeneficiaries = {
-  dealer: {
-    rep_id: "rep-dealer",
-    user_id: "user-dealer",
-    units: 1,
-    is_district_head: false,
-  },
+  dealer: { rep_id: "rep-dealer", user_id: "user-dealer", is_district_head: true },
   districtHead: null,
   divisionalHeadUserId: "user-div",
+  executives: [{ user_id: "user-exec-a", role_weight: 1 }],
 };
-const r4 = computeDistribution(FINANCIALS, ben4);
-const dhInv4 = findRow(r4, "district_head", "investment_return");
-const hqInv4 = findRow(r4, "hq", "investment_return");
-assertEq("no district_head row recorded", dhInv4.length, 0);
-// HQ remainder should absorb the missing district head portion.
-const dealerInv4 = findRow(r4, "representative", "investment_return");
-const divInv4 = findRow(r4, "divisional_head", "investment_return");
-const total4 =
-  Math.round(
-    (dealerInv4[0]!.amount +
-      divInv4[0]!.amount +
-      hqInv4[0]!.amount +
-      Number.EPSILON) *
-      100
-  ) / 100;
-assertEq("investment reconciles without district head", total4, 120000);
+const r2 = computeDistribution(FINANCIALS, ben2);
+const dhRow2 = rowsBy(r2, "district_head", "company_fund");
+assertEq("district_head supervision row exists", dhRow2.length, 1);
+assertEq(
+  "district_head row is the dealer's user",
+  dhRow2[0]!.beneficiary_user_id === "user-dealer" ? 1 : 0,
+  1
+);
+assertEq("rep still gets 20% profit share", rowsBy(r2, "representative", "profit_share")[0]!.amount, 60000);
+assertEq("single exec takes full 45000", rowsBy(r2, "hq_executive", "company_fund")[0]!.amount, 45000);
+const grandTotal2 = sum2(...r2.rows.map((r) => r.amount));
+assertEq("all rows reconcile (sadar case)", grandTotal2, 300000);
 
 // ===========================================================================
-console.log("\n=== CASE 5: total_cost = 0 (divide-by-zero guard) ===");
-const r5 = computeDistribution(
-  { ...FINANCIALS, total_cost: 0 },
-  ben1
+console.log("\n=== CASE 3: No executives configured ===");
+const ben3: DistributionBeneficiaries = {
+  dealer: { rep_id: "rep-dealer", user_id: "user-dealer", is_district_head: false },
+  districtHead: { rep_id: "rep-dh", user_id: "user-dh" },
+  divisionalHeadUserId: "user-div",
+  executives: [],
+};
+const r3 = computeDistribution(FINANCIALS, ben3);
+assertEq("no hq_executive rows", rowsBy(r3, "hq_executive").length, 0);
+// The 45000 exec pool falls to an HQ company_fund row.
+const hqFund3 = rowsBy(r3, "hq", "company_fund");
+assertEq("hq company_fund holds exec pool", hqFund3[0]!.amount, 45000);
+const grandTotal3 = sum2(...r3.rows.map((r) => r.amount));
+assertEq("all rows reconcile (no execs)", grandTotal3, 300000);
+
+// ===========================================================================
+console.log("\n=== CASE 4: No district head, no divisional head ===");
+const ben4: DistributionBeneficiaries = {
+  dealer: { rep_id: "rep-dealer", user_id: "user-dealer", is_district_head: false },
+  districtHead: null,
+  divisionalHeadUserId: null,
+  executives: [{ user_id: "user-exec-a", role_weight: 1 }],
+};
+const r4 = computeDistribution(FINANCIALS, ben4);
+assertEq("no district_head row", rowsBy(r4, "district_head").length, 0);
+assertEq("no divisional_head row", rowsBy(r4, "divisional_head").length, 0);
+// Supervision (9000) falls to an HQ company_fund row.
+assertEq("hq absorbs supervision pool", rowsBy(r4, "hq", "company_fund")[0]!.amount, 9000);
+const grandTotal4 = sum2(...r4.rows.map((r) => r.amount));
+assertEq("all rows reconcile (no supervisors)", grandTotal4, 300000);
+
+// ===========================================================================
+console.log("\n=== CASE 5: Rounding — 3 execs, uneven weights ===");
+// net = 233333.33 forces sub-cent residuals in every bucket. The engine's
+// contract is: (a) the investment slice reconciles exactly to its parts, and
+// (b) rep + hq + investment == the sum of the three independently-rounded
+// top-level shares. (The top-level split rounds each share to 2dp, so a
+// sub-cent net-profit remainder is intentionally dropped, not distributed.)
+const oddFin: DistributionFinancials = { ...CONFIG, net_profit: 233333.33 };
+const ben5: DistributionBeneficiaries = {
+  dealer: { rep_id: "rep-dealer", user_id: "user-dealer", is_district_head: false },
+  districtHead: { rep_id: "rep-dh", user_id: "user-dh" },
+  divisionalHeadUserId: "user-div",
+  executives: [
+    { user_id: "e1", role_weight: 2 },
+    { user_id: "e2", role_weight: 1 },
+    { user_id: "e3", role_weight: 1 },
+  ],
+};
+const r5 = computeDistribution(oddFin, ben5);
+
+// (a) The exec rows reconcile exactly to the exec pool (last exec absorbs residual).
+const execRows5 = rowsBy(r5, "hq_executive", "company_fund");
+const execTotal5 = sum2(...execRows5.map((r) => r.amount));
+assertEq("exec rows reconcile to exec pool (rounding)", execTotal5, r5.executive_amount);
+
+// (b) The whole company-fund (investment) slice reconciles exactly.
+const invParts5 = sum2(
+  ...execRows5.map((r) => r.amount),
+  rowsBy(r5, "district_head", "company_fund")[0]!.amount,
+  rowsBy(r5, "divisional_head", "company_fund")[0]!.amount,
+  rowsBy(r5, "support_fund", "company_fund")[0]!.amount,
+  rowsBy(r5, "future_works", "company_fund")[0]!.amount
 );
-assertEq("per_unit is 0 when total_cost=0", r5.investment_return_per_unit, 0);
-const hqInv5 = findRow(r5, "hq", "investment_return");
-// All investment goes to HQ remainder.
-assertEq("HQ absorbs full investment share", hqInv5[0]!.amount, 120000);
+assertEq("company-fund parts reconcile to investment share (rounding)", invParts5, r5.investment_share_amount);
+
+// (c) rep + hq + investment == sum of the rounded top-level shares.
+assertEq(
+  "top-level shares reconcile",
+  sum2(r5.rep_share_amount, r5.hq_share_amount, r5.investment_share_amount),
+  sum2(...r5.rows.map((r) => r.amount))
+);
 
 // ===========================================================================
 console.log("\n---------------------------------------------");

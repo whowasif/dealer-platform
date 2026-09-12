@@ -34,6 +34,9 @@ const ROLE_LABELS: Record<BeneficiaryRole, string> = {
   district_head: "District head",
   divisional_head: "Divisional head",
   hq: "HQ",
+  hq_executive: "HQ executive",
+  support_fund: "Support fund",
+  future_works: "Future works fund",
 };
 
 const ROLE_STYLES: Record<BeneficiaryRole, string> = {
@@ -41,6 +44,9 @@ const ROLE_STYLES: Record<BeneficiaryRole, string> = {
   district_head: "bg-teal-50 text-teal-700",
   divisional_head: "bg-purple-50 text-purple-700",
   hq: "bg-slate-100 text-slate-700",
+  hq_executive: "bg-indigo-50 text-indigo-700",
+  support_fund: "bg-amber-50 text-amber-700",
+  future_works: "bg-cyan-50 text-cyan-700",
 };
 
 export function RoleBadge({ role }: { role: BeneficiaryRole }) {
@@ -73,8 +79,14 @@ export function DistributionStatusBadge({ status }: { status: string }) {
   );
 }
 
+const DIST_TYPE_LABELS: Record<DistributionType, string> = {
+  profit_share: "Profit share",
+  company_fund: "Company fund",
+  investment_return: "Investment return", // legacy
+};
+
 export function DistributionTypeLabel({ type }: { type: DistributionType }) {
-  return <>{type === "profit_share" ? "Profit share" : "Investment return"}</>;
+  return <>{DIST_TYPE_LABELS[type] ?? type}</>;
 }
 
 export function ScheduleLabel({ schedule }: { schedule: PayoutSchedule }) {
