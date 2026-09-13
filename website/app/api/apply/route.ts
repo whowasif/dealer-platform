@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
+import { mustQuery } from "@/lib/db";
 
 // Public contact / enquiry intake endpoint.
 //
-// This standalone marketing site does not write directly to the internal
-// platform database. Submissions are validated and logged here; wire this up
-// to email, a CRM, or the platform's inquiry table later (e.g. via a webhook
-// or a queued job) without changing the front-end.
+// Submissions are validated and persisted to website_contact_messages in the
+// shared platform database, where the admin app's super admin can read them
+// under Website Content → Contact Messages.
 
 export const runtime = "nodejs";
 
@@ -50,15 +50,23 @@ export async function POST(request: Request) {
     );
   }
 
-  // Placeholder for delivery. Replace with real integration.
-  console.log("[contact-enquiry]", {
-    fullName,
-    businessName: (body.businessName || "").trim(),
-    email,
-    mobile,
-    details: (body.details || "").trim(),
-    receivedAt: new Date().toISOString(),
-  });
+  const businessName = (body.businessName || "").trim() || null;
+  const details = (body.details || "").trim() || null;
+
+  try {
+    await mustQuery(
+      `INSERT INTO website_contact_messages
+          (full_name, business_name, email, mobile, details)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [fullName, businessName, email, mobile, details]
+    );
+  } catch (err) {
+    console.error("[contact-enquiry] failed to save:", err);
+    return NextResponse.json(
+      { error: "Could not send your message right now. Please try again." },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({ ok: true });
 }

@@ -11,20 +11,30 @@ import { Insights } from "@/components/sections/insights";
 import { Faq } from "@/components/sections/faq";
 import { Contact } from "@/components/sections/contact";
 import { LocationMap3D } from "@/components/sections/location-map3d";
+import { getInsights, getNetworkGallery } from "@/lib/site-content";
 
-export default function Page() {
+// Content (insights + network cards) is editable from the admin app, so this
+// page reads it fresh from the DB. Revalidate periodically so edits appear.
+export const revalidate = 60;
+
+export default async function Page() {
+  const [insights, network] = await Promise.all([
+    getInsights(),
+    getNetworkGallery(),
+  ]);
+
   return (
     <>
       <SiteHeader />
       <main>
         <Hero />
         <About />
-        <Network />
+        <Network items={network} />
         <Capabilities />
         <Benefits />
         <JoinNetwork />
         <Testimonials />
-        <Insights />
+        <Insights items={insights} />
         <Faq />
         <Contact />
         <LocationMap3D />

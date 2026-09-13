@@ -7,3 +7,8 @@
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# User-uploaded website images (managed via the admin app). Keep the folder,
+# ignore its contents.
+/public/uploads/*
+!/public/uploads/.gitkeep

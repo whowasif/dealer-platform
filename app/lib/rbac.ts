@@ -80,6 +80,10 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Funds", href: "/funds" },
       { label: "Fees & Payments", href: "/fees" },
       { label: "Documents", href: "/documents" },
+      // Public-website content management — super admin only.
+      ...(isSuperAdmin(user)
+        ? [{ label: "Website Content", href: "/website" }]
+        : []),
       { label: "Reports (National)", href: "/reports" },
       { label: "Disciplinary", href: "/disciplinary" },
       { label: "Complaints", href: "/complaints" },

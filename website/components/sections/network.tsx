@@ -4,7 +4,7 @@ import { useRef } from "react";
 import Image from "next/image";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { Reveal } from "@/components/reveal";
-import { NETWORK_GALLERY } from "@/lib/content";
+import type { NetworkItem } from "@/lib/site-content";
 
 // Card geometry. The sticky wrapper is one card wide, so the first card starts
 // centred and the strip scrolls left until the last card is centred.
@@ -13,7 +13,7 @@ const GAP = 30;
 const ITEM_WIDTH_SM = 280;
 const GAP_SM = 16;
 
-export function Network() {
+export function Network({ items }: { items: NetworkItem[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -21,9 +21,9 @@ export function Network() {
   });
 
   // Total travel = all cards minus the one already visible.
-  const totalDistance = (NETWORK_GALLERY.length - 1) * (ITEM_WIDTH + GAP);
-  const totalDistanceSm =
-    (NETWORK_GALLERY.length - 1) * (ITEM_WIDTH_SM + GAP_SM);
+  const count = Math.max(items.length, 1);
+  const totalDistance = (count - 1) * (ITEM_WIDTH + GAP);
+  const totalDistanceSm = (count - 1) * (ITEM_WIDTH_SM + GAP_SM);
 
   // Two transforms (desktop / mobile). We render both strips and toggle which
   // one is visible with Tailwind breakpoints, so each uses the right distance.
@@ -59,7 +59,7 @@ export function Network() {
             style={{ x }}
             className="hidden gap-[30px] pl-[calc(50vw-210px)] will-change-transform sm:flex"
           >
-            {NETWORK_GALLERY.map((item) => (
+            {items.map((item) => (
               <GalleryItem key={item.id} item={item} />
             ))}
           </motion.div>
@@ -69,7 +69,7 @@ export function Network() {
             style={{ x: xSm }}
             className="flex gap-[16px] pl-[calc(50vw-140px)] will-change-transform sm:hidden"
           >
-            {NETWORK_GALLERY.map((item) => (
+            {items.map((item) => (
               <GalleryItem key={item.id} item={item} small />
             ))}
           </motion.div>
@@ -83,7 +83,7 @@ function GalleryItem({
   item,
   small = false,
 }: {
-  item: (typeof NETWORK_GALLERY)[number];
+  item: NetworkItem;
   small?: boolean;
 }) {
   return (
