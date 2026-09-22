@@ -75,11 +75,11 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Orders", href: "/orders" },
       { label: "Customers", href: "/customers" },
       { label: "Projects", href: "/projects" },
+      { label: "Technical Support", href: "/support" },
       { label: "Profit Config", href: "/projects/config" },
       { label: "HQ Executives", href: "/executives" },
       { label: "Funds", href: "/funds" },
       { label: "Fees & Payments", href: "/fees" },
-      { label: "Documents", href: "/documents" },
       // Public-website content management — super admin only.
       ...(isSuperAdmin(user)
         ? [{ label: "Website Content", href: "/website" }]
@@ -102,8 +102,8 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Orders", href: "/orders" },
       { label: "Customers", href: "/customers" },
       { label: "Projects", href: "/projects" },
+      { label: "Technical Support", href: "/support" },
       { label: "Fees", href: "/fees" },
-      { label: "Documents", href: "/documents" },
       { label: "Reports (Division)", href: "/reports" },
       { label: "Disciplinary", href: "/disciplinary" },
       { label: "Complaints", href: "/complaints" },
@@ -118,8 +118,8 @@ export function menuForUser(user: SessionUser): MenuItem[] {
       { label: "Orders", href: "/orders" },
       { label: "Customers", href: "/customers" },
       { label: "Projects", href: "/projects" },
+      { label: "Technical Support", href: "/support" },
       { label: "Fees", href: "/fees" },
-      { label: "Documents", href: "/documents" },
       { label: "Reports (District)", href: "/reports" },
       { label: "Complaints", href: "/complaints" },
     ];
@@ -134,9 +134,9 @@ export function menuForUser(user: SessionUser): MenuItem[] {
     { label: "Record Sale", href: "/orders/sale/new" },
     { label: "My Customers", href: "/customers" },
     { label: "My Projects", href: "/projects" },
+    { label: "Technical Support", href: "/support" },
     { label: "New Project", href: "/projects/new" },
     { label: "My Fees", href: "/fees" },
-    { label: "My Documents", href: "/documents" },
     { label: "Complaints", href: "/complaints" },
     { label: "Notifications", href: "/notifications" },
     { label: "My Profile", href: "/profile" },

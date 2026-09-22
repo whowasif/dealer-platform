@@ -3,6 +3,10 @@ import { getSessionUser } from "@/lib/session";
 import { primaryRoleLabel } from "@/lib/rbac";
 import { getProfile } from "@/lib/profile";
 import { ProfileEditForm, ChangePasswordForm } from "./profile-forms";
+import { isHQ } from "@/lib/rbac";
+import { listPersonalDocuments, listAllPersonalDocuments } from "@/lib/personal-documents";
+import { listUsers } from "@/lib/users";
+import { PersonalDocuments } from "./personal-documents";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "My profile — Dealer Network" };
@@ -14,6 +18,11 @@ export default async function ProfilePage() {
   const profile = await getProfile(user.id);
   if (!profile) redirect("/dashboard");
 
+  const personalDocuments = isHQ(user)
+    ? await listAllPersonalDocuments(user)
+    : await listPersonalDocuments(user.id, user);
+  const users = isHQ(user) ? await listUsers() : [];
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
@@ -24,6 +33,11 @@ export default async function ProfilePage() {
       </div>
 
       <ProfileEditForm profile={profile} />
+      <PersonalDocuments
+        actor={user}
+        documents={personalDocuments}
+        users={users.map((item) => ({ id: item.id, full_name: item.full_name }))}
+      />
       <ChangePasswordForm />
     </div>
   );

@@ -761,93 +761,85 @@ export interface LedgerRow {
 }
 
 // -----------------------------------------------------------------------------
-// Task 8 — Documents & Document Categories (section 9).
-// Column names mirror the PostgreSQL schema exactly. DECIMAL money (amount)
-// comes back from node-postgres as a string; parse with Number() where needed.
+// Simplified personal/project files, project chat, and progress workflow.
 // -----------------------------------------------------------------------------
 
-/** What an entity a document can be linked to (documents.related_type). */
-export type DocumentRelatedType =
-  | "representative"
-  | "project"
-  | "order"
-  | "customer"
-  | "user";
+export interface PersonalDocumentRow {
+  id: string;
+  user_id: string;
+  user_name: string;
+  document_type: string;
+  title: string;
+  file_url: string;
+  file_size: number | null;
+  mime_type: string | null;
+  notes: string | null;
+  uploaded_by: string;
+  uploaded_by_name: string;
+  created_at: string;
+  updated_at: string;
+}
 
-/** A row from document_categories (seeded, extensible). */
-export interface DocumentCategoryRow {
+export interface WorkFileCategoryRow {
   id: string;
   name: string;
-  bn_name: string | null;
   description: string | null;
   is_active: boolean;
-  sort_order: number;
+}
+
+export interface ProjectFileRow {
+  id: string;
+  project_id: string;
+  category_id: string;
+  category_name: string;
+  title: string;
+  file_url: string | null;
+  file_size: number | null;
+  mime_type: string | null;
+  content_text: string | null;
+  sender_id: string;
+  sender_name: string;
+  recipient_id: string | null;
+  recipient_name: string | null;
+  sent_at: string;
+  updated_at: string;
+}
+
+export interface ProjectParticipant {
+  id: string;
+  full_name: string;
+  role_name: RoleName | string;
+}
+
+export interface ProjectMessageRow {
+  id: string;
+  project_id: string | null;
+  conversation_type: "project" | "support";
+  sender_id: string;
+  sender_name: string;
+  recipient_id: string | null;
+  recipient_name: string | null;
+  body: string;
   created_at: string;
+  read_at: string | null;
 }
 
-/** A document row for the list, joined with category + uploader + link label. */
-export interface DocumentListItem {
+export interface ProjectProgressStageRow {
   id: string;
-  category_id: string;
-  category_name: string;
-  category_bn_name: string | null;
-  related_type: DocumentRelatedType | null;
-  related_id: string | null;
-  representative_id: string | null;
-  project_id: string | null;
-  title: string;
-  file_url: string;
-  file_size: number | null;
-  mime_type: string | null;
-  document_number: string | null;
-  document_date: string | null;
-  amount: string | null;
-  verified: boolean;
-  expiry_date: string | null;
-  tags: string[];
-  uploaded_by: string | null;
-  uploaded_by_name: string | null;
-  uploaded_at: string;
-  /** Human label describing what the document is linked to. */
-  link_label: string | null;
+  stage_key: string;
+  display_name: string;
+  sort_order: number;
+  is_terminal: boolean;
+  is_active: boolean;
 }
 
-/** Full document detail incl. category, uploader, verifier + owner scope info. */
-export interface DocumentDetail {
-  id: string;
-  category_id: string;
-  category_name: string;
-  category_bn_name: string | null;
-  related_type: DocumentRelatedType | null;
-  related_id: string | null;
-  representative_id: string | null;
-  project_id: string | null;
-  title: string;
-  file_url: string;
-  file_size: number | null;
-  mime_type: string | null;
-  document_number: string | null;
-  document_date: string | null;
-  amount: string | null;
-  verified: boolean;
-  verified_by: string | null;
-  verified_by_name: string | null;
-  verified_at: string | null;
-  expiry_date: string | null;
-  tags: string[];
-  notes: string | null;
-  uploaded_by: string | null;
-  uploaded_by_name: string | null;
-  uploaded_at: string;
-  /** Human label describing what the document is linked to. */
-  link_label: string | null;
-  /**
-   * Owner scope resolved from the linked entity (when tied to a rep/project/
-   * order/customer). Used to authorize viewing/downloading. All null when the
-   * document is not tied to a representative (then HQ-only / uploader).
-   */
-  owner_rep_id: string | null;
-  owner_rep_user_id: string | null;
-  owner_division_id: string | null;
-  owner_district_id: string | null;
+export interface ProjectProgressRow {
+  project_id: string;
+  stage_id: string;
+  stage_key: string;
+  display_name: string;
+  history_id: string | null;
+  changed_by_name: string | null;
+  changed_at: string | null;
+  note: string | null;
 }

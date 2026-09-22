@@ -24,7 +24,6 @@ import { InvoiceStatusBadge, VerifiedBadge } from "../../fees/fee-badges";
 import { StatusControls } from "./status-controls";
 import { DepositForm } from "./deposit-form";
 import { ContractPanel } from "./contract-panel";
-import { DocumentsSection } from "@/components/documents-section";
 import {
   CreateDisciplinaryPanel,
   ResolvePanel,
@@ -637,8 +636,6 @@ export default async function RepresentativeDetailPage({
         ) : null}
       </section>
 
-      {/* Documents */}
-      <DocumentsSection relatedType="representative" relatedId={rep.id} />
 
       {rep.notes ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

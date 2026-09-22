@@ -6,6 +6,15 @@
 **Date:** August 25, 2026  
 **Status:** Approved (Revised)  
 
+> **Current implementation note — September 2026:** The working system is a
+> plain PostgreSQL 10.23 deployment with two Next.js applications: an internal
+> management portal and a public website. Authentication uses app-level JWT
+> sessions. Personal files are stored per user, work files and communication
+> are project-linked, and project progress is role-controlled. Supabase,
+> mobile/offline sync, and the old generic document library are not part of the
+> current implementation. See `database/README.md` and `docs/admin-panel-sections.md`
+> for the current operational model.
+
 ---
 
 ## Table of Contents

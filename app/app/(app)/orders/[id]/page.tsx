@@ -11,7 +11,6 @@ import {
 import type { OrderStatus } from "@/lib/types";
 import { OrderStatusBadge, OrderTypeBadge } from "../status-badge";
 import { StatusControls, type StatusAction } from "./status-controls";
-import { DocumentsSection } from "@/components/documents-section";
 import { getApproval, approvalStatus } from "@/lib/approvals";
 import { ApprovalPanel } from "@/components/approval-panel";
 
@@ -340,8 +339,6 @@ export default async function OrderDetailPage({
         )}
       </section>
 
-      {/* Documents */}
-      <DocumentsSection relatedType="order" relatedId={order.id} />
     </div>
   );
 }

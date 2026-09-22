@@ -1,4 +1,4 @@
-﻿-- =============================================================================
+-- =============================================================================
 -- Dealer Network Management System â€” Public Website Inquiries
 -- File 05: run AFTER 01_schema.sql (needs divisions/districts/upazilas).
 --

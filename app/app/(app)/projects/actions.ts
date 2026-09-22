@@ -18,6 +18,14 @@ import {
 import { createProfitConfig, getActiveProfitConfig } from "@/lib/profit-config";
 import { createInvestmentSplitConfig } from "@/lib/investment-split-config";
 import { notifyApproversOfNew } from "@/lib/approvals";
+import { saveFile } from "@/lib/storage";
+import {
+  createProjectFile,
+  sendProjectMessage,
+  transitionProjectProgress,
+  updateProjectFile,
+  createWorkFileCategory,
+} from "@/lib/project-workflow";
 
 // -----------------------------------------------------------------------------
 // Server actions for the projects feature. Every action re-checks authorization
@@ -189,6 +197,125 @@ export async function distributeProjectAction(
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
   return { success: "Profit distributed. The breakdown is now locked." };
+}
+
+// -------------------------- Project workspace -------------------------------
+
+export async function createProjectFileAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const actor = await getSessionUser();
+  if (!actor) return { error: "Not authenticated." };
+  const projectId = String(formData.get("project_id") ?? "");
+  const categoryId = String(formData.get("category_id") ?? "");
+  const title = String(formData.get("title") ?? "").trim();
+  const contentText = String(formData.get("content_text") ?? "").trim();
+  const recipientId = String(formData.get("recipient_id") ?? "").trim() || null;
+  const file = formData.get("file");
+  if (!projectId || !categoryId || title.length < 2) return { error: "Project, category, and title are required." };
+  if (!contentText && (!(file instanceof File) || file.size === 0)) return { error: "Type the document or attach a file." };
+  if (file instanceof File && file.size > 15 * 1024 * 1024) return { error: "File is too large (max 15MB)." };
+
+  let storageKey: string | null = null;
+  let fileSize: number | null = null;
+  let mimeType: string | null = null;
+  try {
+    if (file instanceof File && file.size > 0) {
+      const saved = await saveFile({
+        buffer: Buffer.from(await file.arrayBuffer()),
+        originalName: file.name,
+        mimeType: file.type || "application/octet-stream",
+      });
+      storageKey = saved.storageKey;
+      fileSize = saved.fileSize;
+      mimeType = file.type || "application/octet-stream";
+    }
+    await createProjectFile({
+      projectId,
+      categoryId,
+      title,
+      contentText: contentText || null,
+      storageKey,
+      fileSize,
+      mimeType,
+      recipientId,
+    }, actor);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not send project file." };
+  }
+  revalidatePath(`/projects/${projectId}`);
+  return { success: "Project file sent." };
+}
+
+export async function createWorkFileCategoryAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const actor = await getSessionUser();
+  if (!actor) return { error: "Not authenticated." };
+  try {
+    await createWorkFileCategory(String(formData.get("name") ?? ""), String(formData.get("description") ?? "").trim() || null, actor);
+    revalidatePath("/projects");
+    return { success: "Category added." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not add category." };
+  }
+}
+
+export async function sendProjectMessageAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const actor = await getSessionUser();
+  if (!actor) return { error: "Not authenticated." };
+  const projectId = String(formData.get("project_id") ?? "");
+  const recipientId = String(formData.get("recipient_id") ?? "").trim() || null;
+  const body = String(formData.get("body") ?? "");
+  try {
+    await sendProjectMessage(projectId, recipientId, body, actor);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not send message." };
+  }
+  revalidatePath(`/projects/${projectId}`);
+  return { success: "Message sent." };
+}
+
+export async function updateProjectFileAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const actor = await getSessionUser();
+  if (!actor) return { error: "Not authenticated." };
+  const id = String(formData.get("file_id") ?? "");
+  const title = String(formData.get("title") ?? "").trim();
+  const content = String(formData.get("content_text") ?? "");
+  if (!id || title.length < 2 || !content.trim()) return { error: "Title and document text are required." };
+  try {
+    await updateProjectFile(id, title, content, actor);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not edit project file." };
+  }
+  return { success: "Project file updated." };
+}
+
+export async function transitionProjectProgressAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const actor = await getSessionUser();
+  if (!actor) return { error: "Not authenticated." };
+  const projectId = String(formData.get("project_id") ?? "");
+  const stageId = String(formData.get("stage_id") ?? "");
+  const note = String(formData.get("note") ?? "").trim() || null;
+  try {
+    await transitionProjectProgress(projectId, stageId, note, actor);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not change project progress." };
+  }
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/projects");
+  return { success: "Project progress updated." };
 }
 
 // --------------------------- Profit config (HQ only) -------------------------

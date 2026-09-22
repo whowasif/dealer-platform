@@ -125,13 +125,17 @@ export async function createProject(
     }
 
     const projectNumber = await nextProjectNumber(client);
+    const progressStage = await client.query<{ id: string }>(
+      `SELECT id FROM project_progress_stages WHERE stage_key = 'draft' AND is_active = TRUE LIMIT 1`
+    );
+    const progressStageId = progressStage.rows[0]?.id ?? null;
 
     const res = await client.query<{ id: string }>(
       `INSERT INTO projects
           (project_number, representative_id, upazila_id, customer_id, title,
            description, project_value, vat_tax_percentage, vat_tax_amount,
-           total_cost, net_profit, status, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           total_cost, net_profit, status, created_by, progress_stage_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING id`,
       [
         projectNumber,
@@ -147,6 +151,7 @@ export async function createProject(
         netProfit,
         input.status,
         user.id,
+        progressStageId,
       ]
     );
     return res.rows[0]!.id;

@@ -4,6 +4,9 @@
 .env*.local
 *.env
 
+# ---- Local database backups ----
+dealer_platform_backup.sql
+
 # ---- Node / Next.js (app) ----
 node_modules/
 .next/

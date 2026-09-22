@@ -18,7 +18,15 @@ import {
   DistributionStatusBadge,
 } from "../status-badge";
 import { DistributeControls } from "./distribute-controls";
-import { DocumentsSection } from "@/components/documents-section";
+import { ProjectWorkspace } from "@/components/project-workspace";
+import {
+  getProjectProgress,
+  listProjectFiles,
+  listProjectMessages,
+  listProjectParticipants,
+  listProgressStages,
+  listWorkFileCategories,
+} from "@/lib/project-workflow";
 import { getApproval, approvalStatus } from "@/lib/approvals";
 import { ApprovalPanel } from "@/components/approval-panel";
 
@@ -61,11 +69,17 @@ export default async function ProjectDetailPage({
     : null;
   const approval = approvalRow ? approvalStatus(user, approvalRow) : null;
 
-  const [distributions, beneficiaries, profitCfg, splitCfg] = await Promise.all([
+  const [distributions, beneficiaries, profitCfg, splitCfg, projectFiles, projectCategories, projectParticipants, projectMessages, projectProgress, progressStages] = await Promise.all([
     listDistributionsForProject(project.id),
     distributed ? Promise.resolve(null) : resolveBeneficiaries(project),
     getActiveProfitConfig(),
     getActiveInvestmentSplitConfig(),
+    listProjectFiles(project.id, user),
+    listWorkFileCategories(),
+    listProjectParticipants(project.id, user),
+    listProjectMessages(project.id, user),
+    getProjectProgress(project.id, user),
+    listProgressStages(),
   ]);
 
   const netProfit = Number(project.net_profit);
@@ -342,8 +356,16 @@ export default async function ProjectDetailPage({
         </p>
       ) : null}
 
-      {/* Documents */}
-      <DocumentsSection relatedType="project" relatedId={project.id} />
+      <ProjectWorkspace
+        projectId={project.id}
+        files={projectFiles}
+        categories={projectCategories}
+        participants={projectParticipants}
+        messages={projectMessages}
+        progress={projectProgress}
+        stages={progressStages}
+        canManageCategories={hq}
+      />
     </div>
   );
 }

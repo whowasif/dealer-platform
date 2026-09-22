@@ -1,4 +1,4 @@
-﻿-- =============================================================================
+-- =============================================================================
 -- Dealer Network Management System â€” Combined Schema
 -- Target: PLAIN PostgreSQL 18 (NOT Supabase)
 -- File 01 of 03: run this FIRST.

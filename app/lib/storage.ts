@@ -6,7 +6,7 @@ import path from "path";
 // -----------------------------------------------------------------------------
 // Swappable file-storage abstraction.
 //
-// Feature code (server actions, route handlers, lib/documents.ts) only talks to
+// Feature code (server actions and route handlers) only talks to
 // the exported functions below — never to the filesystem directly. That keeps
 // the local-disk specifics isolated so a cloud backend (S3, Supabase Storage,
 // GCS, ...) can replace this module later WITHOUT touching any feature code:
@@ -17,11 +17,11 @@ import path from "path";
 //   Base directory comes from the UPLOAD_DIR env var (default
 //   "D:\\Office\\database files"). This directory lives OUTSIDE the Next.js
 //   public/ folder, so files are NOT directly web-accessible — they can only be
-//   reached through the authenticated download route (documents/[id]/file).
+//   reached through authenticated personal/project file routes.
 //
 //   Files are laid out as  {UPLOAD_DIR}/{yyyy}/{mm}/{uuid}-{sanitizedName}.
 //   Only the RELATIVE path ("2026/08/uuid-name.pdf") is returned as the
-//   `storageKey` and persisted in documents.file_url. Because the absolute base
+//   `storageKey` and persisted in personal/project file file_url columns. Because the absolute base
 //   dir is never stored, it can change (or move to the cloud) later without a
 //   data migration.
 // -----------------------------------------------------------------------------
@@ -42,7 +42,7 @@ export interface SaveFileInput {
 }
 
 export interface SavedFile {
-  /** Relative path stored in the DB (documents.file_url). Backend-agnostic. */
+  /** Relative path stored in the DB. Backend-agnostic. */
   storageKey: string;
   /** An app-relative URL for viewing/downloading via the secure route. */
   fileUrl: string;

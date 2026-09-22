@@ -4,6 +4,13 @@
 
 > **Note:** This is only a preliminary draft, not a final signable document. The compensation and profit-sharing rates mentioned here are illustrative — the final rates must be determined by HQ's Finance Department. Before use, the complete document must be reviewed and verified by a lawyer. Sections marked with brackets **[......]** must be filled in with actual information.
 
+> **System progress note — September 2026:** The management portal now supports
+> representative onboarding, orders, projects, project-linked quotations and
+> specifications, scoped project communication, technical support, personal
+> documents, role-controlled project progress, fees, audit, complaints, and
+> company-fund reporting. The agreement remains a business/legal draft and must
+> be reconciled with the live configuration before signing.
+
 ---
 
 ## Part 1: Business Model Summary
